@@ -41,7 +41,7 @@ export async function authenticate(
 
   if (error || !agents) {
     return [null, NextResponse.json(
-      { error: "Auth service unavailable" },
+      { error: "Auth service unavailable", details: error?.message },
       { status: 500 }
     )];
   }
