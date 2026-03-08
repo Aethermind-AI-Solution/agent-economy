@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { redirect } from "next/navigation";
 
 // Disable Next.js caching — always fetch live data on every request
 export const dynamic = "force-dynamic";
@@ -36,7 +37,29 @@ function statusColor(status: string) {
   return map[status] ?? "#6b7280";
 }
 
-export default async function Dashboard() {
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ key?: string }>;
+}) {
+  const { key } = await searchParams;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  // If ADMIN_PASSWORD is set, require ?key=<password> to access dashboard
+  if (adminPassword && key !== adminPassword) {
+    return (
+      <html lang="en">
+        <head><title>Agent Economy — Access Denied</title></head>
+        <body style={{ fontFamily: "system-ui", display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", margin: 0, background: "#0f172a", color: "#94a3b8" }}>
+          <div style={{ textAlign: "center" }}>
+            <h1 style={{ fontSize: "1.5rem", color: "#e2e8f0" }}>🔒 Admin Dashboard</h1>
+            <p>Access denied. Append <code>?key=YOUR_PASSWORD</code> to the URL.</p>
+          </div>
+        </body>
+      </html>
+    );
+  }
+
   const { agents, conversations, reviews } = await getData();
 
   const completedTx = conversations.filter((c: any) => c.status === "completed");
@@ -51,7 +74,7 @@ export default async function Dashboard() {
     <html lang="en">
       <head>
         <title>Agent Economy — Admin</title>
-        <meta httpEquiv="refresh" content="5" />
+        <meta httpEquiv="refresh" content={`5;url=/?key=${key ?? ""}`} />
         <link
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"

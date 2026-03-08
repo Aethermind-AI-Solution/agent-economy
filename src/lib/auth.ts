@@ -39,20 +39,20 @@ export async function authenticate(
   const apiKey = authHeader.slice(7);
   const prefix = apiKey.slice(0, KEY_PREFIX_LENGTH);
 
-  // 1. Fast path: prefix lookup (single bcrypt compare)
-  const { data: prefixMatch } = await supabase
+  // 1. Fast path: prefix lookup (compare against all prefix matches)
+  const { data: prefixMatches } = await supabase
     .from("agents")
     .select("id, name, type, balance, status, api_key_hash")
     .eq("status", "active")
-    .eq("api_key_prefix", prefix)
-    .limit(1);
+    .eq("api_key_prefix", prefix);
 
-  if (prefixMatch && prefixMatch.length > 0) {
-    const agent = prefixMatch[0];
-    const match = await bcrypt.compare(apiKey, agent.api_key_hash);
-    if (match) {
-      const { api_key_hash, ...safe } = agent;
-      return [safe as AuthenticatedAgent, null];
+  if (prefixMatches && prefixMatches.length > 0) {
+    for (const agent of prefixMatches) {
+      const match = await bcrypt.compare(apiKey, agent.api_key_hash);
+      if (match) {
+        const { api_key_hash, ...safe } = agent;
+        return [safe as AuthenticatedAgent, null];
+      }
     }
   }
 

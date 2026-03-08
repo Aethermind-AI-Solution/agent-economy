@@ -36,7 +36,16 @@ export async function POST(
   if (rateLimited) return rateLimited;
 
   const { id: conversationId } = await params;
-  const body = await req.json();
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid or missing JSON body" },
+      { status: 400 }
+    );
+  }
   const { message_type, payload } = body;
 
   if (!message_type) {
@@ -115,7 +124,13 @@ export async function POST(
   }
 
   if (transition.sideEffect === "freeze_escrow") {
-    await freezeEscrow(conversationId);
+    const result = await freezeEscrow(conversationId);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || "Failed to freeze escrow" },
+        { status: 500 }
+      );
+    }
   }
 
   // 5. Build update payload
@@ -130,18 +145,21 @@ export async function POST(
     update.delivery_payload = payload;
   }
 
-  // 6. Update conversation
+  // 6. Update conversation — include status guard to prevent race conditions.
+  //    If another request changed the status already, 0 rows match → 409 Conflict.
   const { data: updated, error: updateErr } = await supabase
     .from("conversations")
     .update(update)
     .eq("id", conversationId)
+    .eq("status", conv.status)
     .select()
     .single();
 
-  if (updateErr) {
+  if (updateErr || !updated) {
+    // If status changed between validation and update → race condition (409 Conflict)
     return NextResponse.json(
-      { error: updateErr.message },
-      { status: 500 }
+      { error: "Conflict: conversation status changed concurrently. Retry." },
+      { status: 409 }
     );
   }
 

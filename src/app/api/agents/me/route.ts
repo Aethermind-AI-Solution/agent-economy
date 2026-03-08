@@ -54,7 +54,15 @@ export async function PATCH(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
 
-  const body = await req.json();
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid or missing JSON body" },
+      { status: 400 }
+    );
+  }
   const { name, type, capabilities } = body;
 
   // Validate type if provided

@@ -29,7 +29,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json();
+  const body = await (async () => {
+    try { return await req.json(); }
+    catch { return null; }
+  })();
+  if (!body) {
+    return NextResponse.json(
+      { error: "Invalid or missing JSON body" },
+      { status: 400 }
+    );
+  }
   const { vendor_id, service_type, rfq } = body;
 
   if (!vendor_id || !service_type || !rfq) {

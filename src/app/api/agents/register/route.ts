@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/agents/register
  *
  * Public endpoint. Registers a new agent on the platform.
+ * Rate-limited to 5 registrations per IP per hour to prevent abuse.
  * Returns the agent profile and a one-time-visible API key.
  *
  * Body: {
@@ -21,7 +23,20 @@ import { supabase } from "@/lib/supabase";
  * }
  */
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  // IP-based rate limit: 5 registrations per hour per IP
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rateLimited = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+  if (rateLimited) return rateLimited;
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid or missing JSON body" },
+      { status: 400 }
+    );
+  }
   const { name, type, capabilities } = body;
 
   if (!name || !type) {
