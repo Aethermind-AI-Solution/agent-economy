@@ -29,7 +29,7 @@ CREATE OR REPLACE FUNCTION create_escrow(
   p_buyer_id UUID,
   p_amount DECIMAL(10,2)
 )
-RETURNS JSONB AS $$
+RETURNS JSONB AS $fn$
 DECLARE
   v_buyer_balance DECIMAL(10,2);
   v_fee DECIMAL(10,2);
@@ -67,7 +67,7 @@ BEGIN
 
   RETURN jsonb_build_object('success', true);
 END;
-$$ LANGUAGE plpgsql;
+$fn$ LANGUAGE plpgsql;
 
 
 -- ============================================================
@@ -77,7 +77,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION release_escrow(
   p_conversation_id UUID
 )
-RETURNS JSONB AS $$
+RETURNS JSONB AS $fn$
 DECLARE
   v_escrow DECIMAL(10,2);
   v_fee DECIMAL(10,2);
@@ -116,7 +116,7 @@ BEGIN
 
   RETURN jsonb_build_object('success', true, 'payout', v_payout);
 END;
-$$ LANGUAGE plpgsql;
+$fn$ LANGUAGE plpgsql;
 
 
 -- ============================================================
@@ -126,7 +126,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION freeze_escrow(
   p_conversation_id UUID
 )
-RETURNS JSONB AS $$
+RETURNS JSONB AS $fn$
 BEGIN
   UPDATE conversations
     SET escrow_frozen = true
@@ -140,7 +140,7 @@ BEGIN
 
   RETURN jsonb_build_object('success', true);
 END;
-$$ LANGUAGE plpgsql;
+$fn$ LANGUAGE plpgsql;
 
 
 -- ============================================================
@@ -148,13 +148,13 @@ $$ LANGUAGE plpgsql;
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION increment_tx_count(agent_uuid UUID)
-RETURNS void AS $$
+RETURNS void AS $fn$
 BEGIN
   UPDATE agents
     SET total_transactions = total_transactions + 1
     WHERE id = agent_uuid;
 END;
-$$ LANGUAGE plpgsql;
+$fn$ LANGUAGE plpgsql;
 
 
 -- ============================================================
@@ -162,11 +162,11 @@ $$ LANGUAGE plpgsql;
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION set_config(setting TEXT, value TEXT)
-RETURNS void AS $$
+RETURNS void AS $fn$
 BEGIN
   PERFORM set_config(setting, value, true);  -- true = local to transaction
 END;
-$$ LANGUAGE plpgsql;
+$fn$ LANGUAGE plpgsql;
 
 
 -- ============================================================
