@@ -1,0 +1,30 @@
+{
+  "name": "agent-economy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "buyer": "tsx agents/procure-bot.ts",
+    "vendor": "tsx agents/pixel-forge.ts",
+    "demo": "concurrently \"npm run vendor\" \"sleep 3 && npm run buyer\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^17.3.1",
+    "next": "^14.2.0",
+    "openai": "^4.50.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "concurrently": "^8.2.0",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.0"
+  }
+}
