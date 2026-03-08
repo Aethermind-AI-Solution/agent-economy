@@ -15,6 +15,8 @@ export const supabase = createClient(
  * Run a callback within an RLS-scoped context.
  * Sets the session variable so Postgres RLS policies
  * know which agent is making the request.
+ *
+ * Requires the set_config() RPC from migration 002.
  */
 export async function withAgentScope<T>(
   agentId: string,

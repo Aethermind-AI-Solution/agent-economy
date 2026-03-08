@@ -10,9 +10,16 @@ export interface AuthenticatedAgent {
   status: "active" | "suspended";
 }
 
+/** Length of the stored key prefix for O(1) lookup */
+export const KEY_PREFIX_LENGTH = 20;
+
 /**
  * Validate the API key from Authorization header.
  * Returns the agent record or a 401 response.
+ *
+ * Auth strategy:
+ *   1. Try O(1) prefix lookup (new agents with api_key_prefix set)
+ *   2. Fall back to O(n) scan (legacy agents without prefix)
  *
  * Usage in any route:
  *   const [agent, errorRes] = await authenticate(request);
@@ -30,14 +37,31 @@ export async function authenticate(
   }
 
   const apiKey = authHeader.slice(7);
+  const prefix = apiKey.slice(0, KEY_PREFIX_LENGTH);
 
-  // Fetch all active agents and compare hashes.
-  // With <100 agents in MVP this is fine.
-  // At scale: use a key prefix lookup table.
+  // 1. Fast path: prefix lookup (single bcrypt compare)
+  const { data: prefixMatch } = await supabase
+    .from("agents")
+    .select("id, name, type, balance, status, api_key_hash")
+    .eq("status", "active")
+    .eq("api_key_prefix", prefix)
+    .limit(1);
+
+  if (prefixMatch && prefixMatch.length > 0) {
+    const agent = prefixMatch[0];
+    const match = await bcrypt.compare(apiKey, agent.api_key_hash);
+    if (match) {
+      const { api_key_hash, ...safe } = agent;
+      return [safe as AuthenticatedAgent, null];
+    }
+  }
+
+  // 2. Slow path: O(n) scan for legacy agents without prefix
   const { data: agents, error } = await supabase
     .from("agents")
     .select("id, name, type, balance, status, api_key_hash")
-    .eq("status", "active");
+    .eq("status", "active")
+    .is("api_key_prefix", null);
 
   if (error || !agents) {
     return [null, NextResponse.json(
@@ -49,6 +73,11 @@ export async function authenticate(
   for (const agent of agents) {
     const match = await bcrypt.compare(apiKey, agent.api_key_hash);
     if (match) {
+      // Backfill prefix for future fast lookups
+      await supabase
+        .from("agents")
+        .update({ api_key_prefix: prefix })
+        .eq("id", agent.id);
       const { api_key_hash, ...safe } = agent;
       return [safe as AuthenticatedAgent, null];
     }

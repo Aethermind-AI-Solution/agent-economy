@@ -3,6 +3,7 @@ import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { validateTransition, type MessageType } from "@/lib/state-machine";
 import { createEscrow, releaseEscrow, freezeEscrow } from "@/lib/escrow";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/conversations/:id/messages
@@ -29,6 +30,10 @@ export async function POST(
 ) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
+
+  // Rate limit: 60 requests/min per agent
+  const rateLimited = rateLimit(agent!.id);
+  if (rateLimited) return rateLimited;
 
   const { id: conversationId } = await params;
   const body = await req.json();

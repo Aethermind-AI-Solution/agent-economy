@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/conversations
@@ -17,6 +18,9 @@ import { supabase } from "@/lib/supabase";
 export async function POST(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
+
+  const rateLimited = rateLimit(agent!.id);
+  if (rateLimited) return rateLimited;
 
   if (agent!.type === "vendor") {
     return NextResponse.json(

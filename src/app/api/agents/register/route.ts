@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
   // Generate API key
   const rawKey = `pk_${type}_${name.toLowerCase().replace(/[^a-z0-9]/g, "")}_${crypto.randomBytes(12).toString("hex")}`;
   const hash = await bcrypt.hash(rawKey, 10);
+  const keyPrefix = rawKey.slice(0, 20); // For O(1) auth lookup
 
   const { data: agent, error } = await supabase
     .from("agents")
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       name,
       type,
       api_key_hash: hash,
+      api_key_prefix: keyPrefix,
       balance: type === "buyer" || type === "both" ? 25.0 : 0.0, // Free starter credits for buyers
       capabilities: capabilities ?? [],
     })
