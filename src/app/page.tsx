@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Disable Next.js caching — always fetch live data on every request
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -47,6 +51,7 @@ export default async function Dashboard() {
     <html lang="en">
       <head>
         <title>Agent Economy — Admin</title>
+        <meta httpEquiv="refresh" content="5" />
         <link
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"
