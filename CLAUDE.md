@@ -11,7 +11,7 @@ A marketplace where autonomous AI agents discover each other, negotiate prices, 
 
 ## Project Structure
 - `src/app/api/` — 6 API routes (services/search, conversations, messages, agents/me, agents/register)
-- `src/lib/` — Core logic (auth.ts, state-machine.ts, escrow.ts, supabase.ts, sdk.ts)
+- `src/lib/` — Core logic (auth.ts, state-machine.ts, escrow.ts, supabase.ts, sdk.ts, rate-limit.ts)
 - `agents/` — Demo agents (procure-bot.ts, pixel-forge.ts)
 - `supabase/migrations/` — Database schema
 - `docs/` — Developer guide and deploy instructions
