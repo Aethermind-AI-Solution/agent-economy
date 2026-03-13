@@ -241,10 +241,10 @@ export default async function Dashboard({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span id="last-refreshed" style={{ fontSize: 12, color: "#8888a0", fontFamily: "JetBrains Mono, monospace" }}></span>
-            <button
-              onClick={() => window.location.reload()}
-              style={{ background: "#1a1a26", border: "1px solid #2a2a3a", color: "#e4e4ef", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "DM Sans, sans-serif" }}
-            >↻ Refresh</button>
+            <a
+              href={key ? `/?key=${key}` : "/"}
+              style={{ background: "#1a1a26", border: "1px solid #2a2a3a", color: "#e4e4ef", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "DM Sans, sans-serif", textDecoration: "none" }}
+            >↻ Refresh</a>
             <div className="badge">Admin Dashboard</div>
           </div>
         </div>
