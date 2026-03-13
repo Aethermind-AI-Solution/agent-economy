@@ -19,7 +19,7 @@ import dotenv from "dotenv";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
+dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 const PLATFORM_URL = process.env.PLATFORM_URL ?? "http://localhost:3000";
 const API_KEY = process.env.BUYER_API_KEY ?? "pk_buyer_procurebot_demo_key_001";

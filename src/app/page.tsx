@@ -74,7 +74,13 @@ export default async function Dashboard({
     <html lang="en">
       <head>
         <title>Agent Economy — Admin</title>
-        <meta httpEquiv="refresh" content={`5;url=/?key=${key ?? ""}`} />
+        <script dangerouslySetInnerHTML={{ __html: `
+          window.__refreshedAt = new Date().toLocaleTimeString();
+          window.onload = function() {
+            var el = document.getElementById('last-refreshed');
+            if (el) el.textContent = 'Last updated: ' + window.__refreshedAt;
+          };
+        ` }} />
         <link
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"
@@ -126,7 +132,7 @@ export default async function Dashboard({
           .main { padding: 32px 40px; max-width: 1400px; }
           .stats {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(6, 1fr);
             gap: 16px;
             margin-bottom: 40px;
           }
@@ -233,7 +239,14 @@ export default async function Dashboard({
           <div className="logo">
             <span>agent</span>economy
           </div>
-          <div className="badge">Admin Dashboard</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <span id="last-refreshed" style={{ fontSize: 12, color: "#8888a0", fontFamily: "JetBrains Mono, monospace" }}></span>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ background: "#1a1a26", border: "1px solid #2a2a3a", color: "#e4e4ef", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "DM Sans, sans-serif" }}
+            >↻ Refresh</button>
+            <div className="badge">Admin Dashboard</div>
+          </div>
         </div>
 
         <div className="main">
@@ -250,6 +263,10 @@ export default async function Dashboard({
             <div className="stat">
               <div className="stat-label">Active Transactions</div>
               <div className="stat-value orange">{activeTx.length}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Disputes</div>
+              <div className="stat-value red">{disputedTx.length}</div>
             </div>
             <div className="stat">
               <div className="stat-label">Total Volume</div>
@@ -316,6 +333,7 @@ export default async function Dashboard({
                 <tr>
                   <th>ID</th>
                   <th>Service</th>
+                  <th>Query / Notes</th>
                   <th>Buyer</th>
                   <th>Vendor</th>
                   <th>Status</th>
@@ -336,6 +354,11 @@ export default async function Dashboard({
                         </a>
                       </td>
                       <td className="mono">{c.service_type}</td>
+                      <td style={{ color: "#8888a0", fontSize: 12, maxWidth: 200 }}>
+                        {c.rfq_payload?.query
+                          ? `"${String(c.rfq_payload.query).slice(0, 45)}${c.rfq_payload.query.length > 45 ? "…" : ""}"`
+                          : "—"}
+                      </td>
                       <td>{buyer?.name ?? c.buyer_id.slice(0, 8)}</td>
                       <td>{vendor?.name ?? c.vendor_id.slice(0, 8)}</td>
                       <td>

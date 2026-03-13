@@ -20,7 +20,7 @@ import { fileURLToPath } from "url";
 // Load env before any other imports that use module-level env reads
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
+dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 import Anthropic from "@anthropic-ai/sdk";
 import { AgentSDK } from "../src/lib/sdk";
@@ -72,9 +72,14 @@ async function platformHandoff(opts: {
   await buyerSdk.sendMessage(conv.id, "accept");
   log("Offer accepted by buyer (escrow created)");
 
-  // Step 4: Vendor does the work
+  // Step 4: Vendor does the work (with 150s timeout)
   log("Vendor working...");
-  const deliveryPayload = await work();
+  const deliveryPayload = await Promise.race([
+    work(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Step "${label}" timed out after 150s`)), 150_000)
+    ),
+  ]);
 
   // Step 5: Vendor delivers (delivered)
   await vendorSdk.sendMessage(conv.id, "deliver", deliveryPayload);
@@ -87,13 +92,36 @@ async function platformHandoff(opts: {
   return deliveryPayload;
 }
 
+async function checkPlatform(platformUrl: string) {
+  try {
+    const res = await fetch(`${platformUrl}/api/agents/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ __ping: true }), // will 400, but proves server is up
+      signal: AbortSignal.timeout(5_000),
+    });
+    // Any JSON response (even error) means the platform is up
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      throw new Error("Platform returned non-JSON — wrong URL or port?");
+    }
+  } catch (err: any) {
+    if (err.name === "TimeoutError" || err.code === "ECONNREFUSED" || err.cause?.code === "ECONNREFUSED") {
+      console.error(`FATAL: Platform at ${platformUrl} is not reachable.`);
+      console.error(`       Start the dev server first: npm run dev`);
+    } else {
+      console.error(`FATAL: Platform check failed — ${err.message}`);
+    }
+    process.exit(1);
+  }
+}
+
 async function main() {
   const query = process.argv[2];
-  if (!query) {
+  if (!query || query.trim().length < 10) {
     console.error(`Usage: npx tsx agents/run-crew.ts "<search query>"`);
-    console.error(
-      `Example: npx tsx agents/run-crew.ts "healthcare companies in India that need AI automation"`
-    );
+    console.error(`       Query must be at least 10 characters.`);
+    console.error(`Example: npx tsx agents/run-crew.ts "healthcare companies in India that need AI automation"`);
     process.exit(1);
   }
 
@@ -103,6 +131,10 @@ async function main() {
   }
 
   const platformUrl = process.env.PLATFORM_URL ?? "http://localhost:3000";
+
+  // Fail fast if platform is unreachable
+  await checkPlatform(platformUrl);
+
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   log("=".repeat(50));

@@ -1,96 +1,56 @@
 # Pending Improvements — Agent Economy Platform
 
 Last updated: 2026-03-13
-Status: Queued for next session
+Status: All items completed ✓
 
 ---
 
-## 🔴 Fix Immediately (Annoying / Broken)
+## ✅ Completed
 
 ### 1. Suppress dotenv verbose output
-**File:** All agent files (`research-agent.ts`, `data-agent.ts`, `sales-agent.ts`, `run-crew.ts`, `pixel-forge.ts`, `procure-bot.ts`)
-**Problem:** Every run prints 4 lines of dotenv marketing tips — noisy and unprofessional.
-**Fix:** Add `quiet: true` to all `dotenv.config()` calls:
-```typescript
-dotenv.config({ path: '...', quiet: true });
-```
+Added `quiet: true` to all `dotenv.config()` calls across all 6 agent files.
 
 ### 2. Platform connectivity check before crew starts
-**File:** `agents/run-crew.ts`
-**Problem:** If the dev server is down, the crew registers agents (slow), then fails on first API call with a confusing error.
-**Fix:** Add a ping to `/api/agents/me` (or just a health check) before calling `registerAllAgents()`. Fail fast with a clear message: `"FATAL: Platform at http://localhost:3001 is not reachable. Run: npm run dev"`.
+Added `checkPlatform()` in `run-crew.ts` — pings `/api/agents/register`, checks for JSON response, fails fast with clear message if server is down or on wrong port.
 
----
-
-## 🟠 GUI Gaps (Visible to Users / CTO)
-
-### 3. Conversation detail: render outreach drafts as readable cards
-**File:** `src/app/conversations/[id]/page.tsx`
-**Problem:** The `delivery_payload` for outreach drafts is displayed as a raw JSON blob — completely unreadable.
-**Fix:** Detect `delivery_payload.artifacts[0].type === "outreach_drafts"` and render each draft as a formatted card with:
-- Company name + score badge
-- Subject line highlighted
-- Email body in a readable block
-- LinkedIn message in a separate section
-Similarly for `scored_leads` — render as a table instead of JSON.
+### 3. Conversation detail: smart payload rendering
+`src/app/conversations/[id]/page.tsx` now detects artifact type and renders:
+- `scored_leads` → expandable cards with score badge, pain points list, recommended solution
+- `outreach_drafts` → formatted cards with subject line highlighted, email body, LinkedIn section
+- `rfq_payload.companies` → collapsed with count (not a giant JSON blob)
+- `rfq_payload.query` → highlighted banner at the top
 
 ### 4. Dashboard: show search query on conversation rows
-**File:** `src/app/page.tsx`
-**Problem:** Conversations table shows `service_type` (e.g., `lead_enrichment`) but can't tell which crew run it belongs to. The search query is buried in `rfq_payload.query`.
-**Fix:** In the conversations table, add a "Query / Notes" column that shows `rfq_payload.query` (truncated to 40 chars) when present. This lets the admin see "healthcare companies in India..." directly in the row.
+Added "Query / Notes" column to the conversations table. Displays `rfq_payload.query` truncated to 45 chars, so each crew run is immediately identifiable.
 
 ### 5. Dashboard: add disputed count to stats bar
-**File:** `src/app/page.tsx` (line ~241)
-**Problem:** Stats bar shows 5 cards (Agents, Completed, Active, Volume, Fees) but no Disputes count. Disputes are only visible by scrolling to the bottom section.
-**Fix:** Add a 6th stat card (red highlight) between Active Transactions and Total Volume:
-```tsx
-<div className="stat">
-  <div className="stat-label">Disputes</div>
-  <div className="stat-value red">{disputedTx.length}</div>
-</div>
-```
+Added 6th stat card (red) between Active Transactions and Total Volume.
 
-### 6. Dashboard: replace 5s auto-refresh with manual refresh button
-**File:** `src/app/page.tsx` (line ~77)
-**Problem:** `<meta httpEquiv="refresh" content="5;url=...">` reloads the entire page every 5 seconds, jumping scroll position and interrupting reading.
-**Fix:** Remove the meta refresh. Add a "Refresh" button in the header that reloads the page on click. Optionally show a "Last updated: HH:MM:SS" timestamp.
+### 6. Dashboard: replace 5s auto-refresh with manual Refresh button
+Removed `<meta httpEquiv="refresh">`. Added a "↻ Refresh" button in the header with "Last updated: HH:MM:SS" timestamp populated by inline JS.
+
+### 7. Add timeout to crew steps
+`platformHandoff()` wraps the `work()` call in `Promise.race` with a 150-second timeout. If Claude API hangs, the step fails with a clear error instead of hanging forever.
+
+### 8. Resolve stuck conversation `b6bf0cfc`
+- Set status to `expired` via Supabase
+- Refunded $1 escrow back to ResearchAgent balance
+- Verified: 0 conversations in `accepted` state, all balances positive
+
+### 9. Input validation on crew query
+Added check in `run-crew.ts`: query must be present and at least 10 characters. Prints usage hint and exits cleanly.
+
+### 10. Git-leak warning when saving API keys
+Added log line after `fs.appendFileSync` in all 3 agent registration helpers:
+`"API key saved to .env.local — ensure .env.local is in .gitignore"`
 
 ---
 
-## 🟡 Code Quality (Lower Urgency)
+## Next Session Ideas
 
-### 7. Add timeout to crew steps
-**File:** `agents/run-crew.ts`
-**Problem:** The `work()` function inside `platformHandoff()` has no timeout. If Claude API hangs, the crew waits forever.
-**Fix:** Wrap the `work()` call with a `Promise.race` against a timeout:
-```typescript
-const result = await Promise.race([
-  work(),
-  new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Step timed out after 120s')), 120_000)
-  )
-]);
-```
-
-### 8. Resolve stuck conversation `b6bf0cfc`
-**Problem:** Conversation `b6bf0cfc-8d55-4617-8b0c-aa79d23da464` is in `accepted` state (from a failed run) with $1 locked in escrow. ResearchAgent balance shows $22 instead of $25 (3 failed runs worth of stuck escrow).
-**Fix:** Admin should manually dispute/resolve via Supabase. Long-term: add an `expires_at` cleanup cron job.
-
-### 9. Input validation on crew query
-**File:** `agents/run-crew.ts` (line ~91)
-**Problem:** `process.argv[2]` is not validated — empty string or whitespace-only is accepted and passed to Claude.
-**Fix:**
-```typescript
-if (!query?.trim() || query.trim().length < 10) {
-  console.error('Query must be at least 10 characters.');
-  process.exit(1);
-}
-```
-
-### 10. Git-leak warning when saving API keys
-**File:** All agent registration helpers
-**Problem:** API keys are appended to `.env.local` silently. No reminder that this file must never be committed.
-**Fix:** After `fs.appendFileSync(...)`, log:
-```
-⚠️  API key saved to .env.local — ensure this file is in .gitignore
-```
+- Pagination on dashboard tables (currently loads all rows)
+- Sorting / filtering on conversations table
+- Dispute resolution UI (Release to Vendor / Refund to Buyer buttons)
+- Export leads to CSV from conversation detail page
+- State history timeline on conversation detail (when did each status change happen)
+- Analytics chart on dashboard (transactions per day, volume trend)

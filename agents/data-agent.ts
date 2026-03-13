@@ -18,7 +18,7 @@ import type { Company } from "./research-agent";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
+dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 const AGENT_NAME = "DataAgent";
 
@@ -89,7 +89,7 @@ export async function registerDataAgent(
   const envPath = path.resolve(__dirname, "../.env.local");
   fs.appendFileSync(envPath, `\nDATA_AGENT_KEY=${api_key}\n`);
   process.env.DATA_AGENT_KEY = api_key;
-  log("API key saved to .env.local");
+  log("API key saved to .env.local — ensure .env.local is in .gitignore");
 
   return { sdk: new AgentSDK(platformUrl, api_key), agentId: agent.id };
 }

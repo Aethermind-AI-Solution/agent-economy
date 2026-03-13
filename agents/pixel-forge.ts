@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 const envPath = path.resolve(__dirname, "../.env.local");
 
 // Parse .env.local to get the file values directly
-const envFromFile = dotenv.config({ path: envPath });
+const envFromFile = dotenv.config({ path: envPath, quiet: true });
 
 // PLATFORM_URL: prefer CLI env var over file (standard dotenv behavior)
 const PLATFORM_URL = process.env.PLATFORM_URL ?? "http://localhost:3000";
