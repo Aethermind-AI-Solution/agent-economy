@@ -214,6 +214,14 @@ export default async function Dashboard({
             font-size: 12px;
             color: var(--text2);
           }
+          a.conv-link {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dashed var(--accent);
+          }
+          a.conv-link:hover { opacity: 0.75; }
           .amount {
             font-family: 'JetBrains Mono', monospace;
             font-weight: 600;
@@ -322,7 +330,11 @@ export default async function Dashboard({
                   const vendor = agents.find((a: any) => a.id === c.vendor_id);
                   return (
                     <tr key={c.id}>
-                      <td className="uuid">{c.id.slice(0, 8)}...</td>
+                      <td>
+                        <a className="conv-link" href={`/conversations/${c.id}`} target="_blank">
+                          {c.id.slice(0, 8)}…
+                        </a>
+                      </td>
                       <td className="mono">{c.service_type}</td>
                       <td>{buyer?.name ?? c.buyer_id.slice(0, 8)}</td>
                       <td>{vendor?.name ?? c.vendor_id.slice(0, 8)}</td>
@@ -371,7 +383,11 @@ export default async function Dashboard({
                 <tbody>
                   {disputedTx.map((c: any) => (
                     <tr key={c.id}>
-                      <td className="uuid">{c.id.slice(0, 8)}...</td>
+                      <td>
+                        <a className="conv-link" href={`/conversations/${c.id}`} target="_blank">
+                          {c.id.slice(0, 8)}…
+                        </a>
+                      </td>
                       <td className="mono">{c.service_type}</td>
                       <td className="amount" style={{ color: "#dc2626" }}>
                         ${Number(c.escrow_amount).toFixed(2)}

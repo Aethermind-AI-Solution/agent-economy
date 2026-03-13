@@ -8,9 +8,11 @@
     "start": "next start",
     "buyer": "tsx agents/procure-bot.ts",
     "vendor": "tsx agents/pixel-forge.ts",
-    "demo": "concurrently \"npm run vendor\" \"sleep 3 && npm run buyer\""
+    "demo": "concurrently \"npm run vendor\" \"sleep 3 && npm run buyer\"",
+    "crew": "tsx agents/run-crew.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/supabase-js": "^2.43.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.3.1",
