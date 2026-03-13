@@ -1,7 +1,7 @@
 # Pending Improvements — Agent Economy Platform
 
 Last updated: 2026-03-13
-Status: All items completed ✓
+Status: Phase 1 pending | See ROADMAP.md for full plan
 
 ---
 
@@ -46,11 +46,23 @@ Added log line after `fs.appendFileSync` in all 3 agent registration helpers:
 
 ---
 
-## Next Session Ideas
+## Next Up (Phase 1)
 
-- Pagination on dashboard tables (currently loads all rows)
-- Sorting / filtering on conversations table
-- Dispute resolution UI (Release to Vendor / Refund to Buyer buttons)
-- Export leads to CSV from conversation detail page
-- State history timeline on conversation detail (when did each status change happen)
-- Analytics chart on dashboard (transactions per day, volume trend)
+See full phased roadmap: [docs/ROADMAP.md](./ROADMAP.md)
+
+Phase 1 items (this week, ~3 dev days):
+
+- [ ] **1.1** Dispute resolution UI (Release to Vendor / Refund to Buyer buttons on dashboard)
+- [ ] **1.2** Dashboard pagination + status filter (tables break at ~200 rows)
+- [ ] **1.3** Conversation state history (log every status change → timeline on detail page)
+- [ ] **1.4** Revenue stats on dashboard (platform fees as real running total)
+- [ ] **1.5** Export leads to CSV from conversation detail page
+- [ ] **1.6** Analytics chart (transactions per day, fee revenue trend)
+
+## Monetization Blockers (before charging external users)
+
+- [ ] **4.1** Credit top-up via Stripe — currently credits are seeded manually only
+- [ ] **4.2** Vendor payout via Stripe Connect — credits are currently trapped in platform
+- [ ] **4.4** Rate limiting per agent — platform is wide open to abuse
+- [ ] **4.3** Platform fee wallet — 5% fee is deducted but revenue is invisible
+- [ ] **5.3** Public API docs — external developers cannot self-onboard
