@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
+import { CreateConversationSchema } from "@/lib/validation";
 
 /**
  * POST /api/conversations
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
 
-  const rateLimited = rateLimit(agent!.id);
+  const rateLimited = await rateLimit(agent!.id);
   if (rateLimited) return rateLimited;
 
   if (agent!.type === "vendor") {
@@ -29,24 +30,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await (async () => {
-    try { return await req.json(); }
-    catch { return null; }
-  })();
-  if (!body) {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
     return NextResponse.json(
       { error: "Invalid or missing JSON body" },
       { status: 400 }
     );
   }
-  const { vendor_id, service_type, rfq } = body;
 
-  if (!vendor_id || !service_type || !rfq) {
+  const parsed = CreateConversationSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Required fields: vendor_id, service_type, rfq" },
+      { error: "Invalid request", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
+
+  const { vendor_id, service_type, rfq } = parsed.data;
 
   // Verify vendor exists and is active
   const { data: vendor } = await supabase

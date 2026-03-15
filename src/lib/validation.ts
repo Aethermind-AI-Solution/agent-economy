@@ -1,0 +1,50 @@
+import { z } from "zod";
+
+export const RegisterSchema = z.object({
+  name: z.string().min(1, "name is required").max(100),
+  type: z.enum(["buyer", "vendor", "both"], {
+    errorMap: () => ({ message: "type must be: buyer, vendor, or both" }),
+  }),
+  capabilities: z
+    .array(
+      z.object({
+        service_type: z.string().min(1),
+        pricing: z.object({
+          model: z.string(),
+          unit_price: z.number().positive(),
+          currency: z.string().length(3),
+        }),
+        description: z.string().optional(),
+      })
+    )
+    .optional()
+    .default([]),
+});
+
+export const CreateConversationSchema = z.object({
+  vendor_id: z.string().uuid("vendor_id must be a valid UUID"),
+  service_type: z.string().min(1, "service_type is required"),
+  rfq: z.record(z.unknown()),
+});
+
+export const SendMessageSchema = z.object({
+  message_type: z.enum(
+    ["offer", "accept", "reject", "deliver", "confirm", "dispute"],
+    { errorMap: () => ({ message: "Invalid message_type" }) }
+  ),
+  payload: z.record(z.unknown()).optional().default({}),
+});
+
+export const UpdateAgentSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    type: z.enum(["buyer", "vendor", "both"]).optional(),
+    capabilities: z.array(z.unknown()).optional(),
+  })
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.type !== undefined ||
+      data.capabilities !== undefined,
+    { message: "No fields to update. Allowed: name, type, capabilities" }
+  );

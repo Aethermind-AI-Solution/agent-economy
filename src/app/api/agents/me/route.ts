@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { UpdateAgentSchema } from "@/lib/validation";
 
 /**
  * GET /api/agents/me
@@ -15,7 +16,9 @@ export async function GET(req: NextRequest) {
   // Full profile
   const { data: profile } = await supabase
     .from("agents")
-    .select("id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at")
+    .select(
+      "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"
+    )
     .eq("id", agent!.id)
     .single();
 
@@ -54,43 +57,39 @@ export async function PATCH(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
 
-  let body: any;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json(
       { error: "Invalid or missing JSON body" },
       { status: 400 }
     );
   }
-  const { name, type, capabilities } = body;
 
-  // Validate type if provided
-  if (type && !["buyer", "vendor", "both"].includes(type)) {
+  const parsed = UpdateAgentSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "type must be: buyer, vendor, or both" },
+      { error: "Invalid request", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
 
+  const { name, type, capabilities } = parsed.data;
+
   // Build update payload — only include fields that were sent
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (type !== undefined) updates.type = type;
   if (capabilities !== undefined) updates.capabilities = capabilities;
-
-  if (Object.keys(updates).length === 0) {
-    return NextResponse.json(
-      { error: "No fields to update. Allowed: name, type, capabilities" },
-      { status: 400 }
-    );
-  }
 
   const { data: updated, error } = await supabase
     .from("agents")
     .update(updates)
     .eq("id", agent!.id)
-    .select("id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at")
+    .select(
+      "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"
+    )
     .single();
 
   if (error) {

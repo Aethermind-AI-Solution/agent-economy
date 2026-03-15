@@ -68,7 +68,11 @@ export default async function Dashboard({
   const activeTx = conversations.filter((c: any) =>
     ["rfq_sent", "offer_sent", "accepted", "delivered"].includes(c.status)
   );
-  const disputedTx = conversations.filter((c: any) => c.status === "disputed");
+  const disputedTx = conversations.filter(
+    (c: any) =>
+      c.status === "disputed" ||
+      (c.status === "expired" && c.escrow_frozen && Number(c.escrow_amount) > 0)
+  );
 
   return (
     <html lang="en">
@@ -232,6 +236,23 @@ export default async function Dashboard({
             font-family: 'JetBrains Mono', monospace;
             font-weight: 600;
           }
+          .btn-resolve {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            border: none;
+            margin-right: 6px;
+          }
+          .btn-release { background: #059669; color: white; }
+          .btn-release:hover { background: #047857; }
+          .btn-refund { background: #2563eb; color: white; }
+          .btn-refund:hover { background: #1d4ed8; }
         `}</style>
       </head>
       <body>
@@ -392,15 +413,17 @@ export default async function Dashboard({
           {disputedTx.length > 0 && (
             <div className="section">
               <div className="section-title" style={{ color: "#dc2626" }}>
-                Disputed Transactions
+                Disputed / Frozen Transactions
               </div>
               <table>
                 <thead>
                   <tr>
                     <th>ID</th>
                     <th>Service</th>
+                    <th>Status</th>
                     <th>Escrow Locked</th>
                     <th>Created</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -412,11 +435,46 @@ export default async function Dashboard({
                         </a>
                       </td>
                       <td className="mono">{c.service_type}</td>
+                      <td>
+                        <span
+                          className="status-pill"
+                          style={{
+                            background: c.status === "disputed" ? "#dc262620" : "#6b728020",
+                            color: c.status === "disputed" ? "#dc2626" : "#6b7280",
+                          }}
+                        >
+                          {c.status}
+                        </span>
+                      </td>
                       <td className="amount" style={{ color: "#dc2626" }}>
                         ${Number(c.escrow_amount).toFixed(2)}
                       </td>
                       <td className="mono" style={{ color: "#8888a0", fontSize: 12 }}>
                         {new Date(c.created_at).toLocaleString()}
+                      </td>
+                      <td>
+                        <form
+                          action={`/api/admin/disputes/${c.id}`}
+                          method="POST"
+                          style={{ display: "inline" }}
+                        >
+                          <input type="hidden" name="action" value="release" />
+                          <input type="hidden" name="key" value={key ?? ""} />
+                          <button type="submit" className="btn-resolve btn-release">
+                            Release to Vendor
+                          </button>
+                        </form>
+                        <form
+                          action={`/api/admin/disputes/${c.id}`}
+                          method="POST"
+                          style={{ display: "inline" }}
+                        >
+                          <input type="hidden" name="action" value="refund" />
+                          <input type="hidden" name="key" value={key ?? ""} />
+                          <button type="submit" className="btn-resolve btn-refund">
+                            Refund to Buyer
+                          </button>
+                        </form>
                       </td>
                     </tr>
                   ))}

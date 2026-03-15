@@ -1,3 +1,6 @@
+// No dotenv here — Next.js dev server loads .env.local automatically.
+// Vercel injects env vars at runtime. Only CLI agent files (agents/*.ts) need dotenv.
+
 import { createClient } from "@supabase/supabase-js";
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {

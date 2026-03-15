@@ -4,12 +4,16 @@ import { supabase } from "@/lib/supabase";
 import { validateTransition, type MessageType } from "@/lib/state-machine";
 import { createEscrow, releaseEscrow, freezeEscrow } from "@/lib/escrow";
 import { rateLimit } from "@/lib/rate-limit";
+import { SendMessageSchema } from "@/lib/validation";
 
 /**
  * POST /api/conversations/:id/messages
  *
  * The core transaction engine. Every state transition goes through here.
  * Validates the transition, executes side effects (escrow), updates state.
+ *
+ * Supports idempotent retries via the Idempotency-Key header.
+ * If the same key is sent twice, the cached response is returned.
  *
  * Body: {
  *   message_type: "offer" | "accept" | "reject" | "deliver" | "confirm" | "dispute",
@@ -32,27 +36,46 @@ export async function POST(
   if (authError) return authError;
 
   // Rate limit: 60 requests/min per agent
-  const rateLimited = rateLimit(agent!.id);
+  const rateLimited = await rateLimit(agent!.id);
   if (rateLimited) return rateLimited;
 
   const { id: conversationId } = await params;
 
-  let body: any;
+  // Idempotency: if the client retried with the same key, return cached response
+  const idempotencyKey = req.headers.get("idempotency-key");
+
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json(
       { error: "Invalid or missing JSON body" },
       { status: 400 }
     );
   }
-  const { message_type, payload } = body;
 
-  if (!message_type) {
+  const parsed = SendMessageSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Required field: message_type" },
+      { error: "Invalid request", details: parsed.error.flatten() },
       { status: 400 }
     );
+  }
+
+  const { message_type, payload } = parsed.data;
+
+  // Check idempotency cache before doing anything
+  if (idempotencyKey) {
+    const cacheKey = `${conversationId}:${message_type}:${idempotencyKey}`;
+    const { data: cached } = await supabase
+      .from("idempotency_cache")
+      .select("response")
+      .eq("key", cacheKey)
+      .single();
+
+    if (cached) {
+      return NextResponse.json(cached.response, { status: 200 });
+    }
   }
 
   // 1. Fetch conversation
@@ -134,7 +157,7 @@ export async function POST(
   }
 
   // 5. Build update payload
-  const update: Record<string, any> = {
+  const update: Record<string, unknown> = {
     status: transition.newStatus,
   };
 
@@ -163,7 +186,7 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({
+  const responseBody = {
     conversation: updated,
     transition: {
       from: conv.status,
@@ -171,5 +194,19 @@ export async function POST(
       message_type,
       side_effect: transition.sideEffect ?? null,
     },
-  });
+  };
+
+  // 7. Store in idempotency cache so retries get the same response
+  if (idempotencyKey) {
+    const cacheKey = `${conversationId}:${message_type}:${idempotencyKey}`;
+    // Fire-and-forget — don't block the response on cache write
+    supabase
+      .from("idempotency_cache")
+      .insert({ key: cacheKey, response: responseBody })
+      .then(({ error }) => {
+        if (error) console.error("[idempotency] cache write failed:", error.message);
+      });
+  }
+
+  return NextResponse.json(responseBody);
 }

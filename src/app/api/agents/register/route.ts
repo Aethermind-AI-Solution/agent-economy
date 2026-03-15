@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
+import { RegisterSchema } from "@/lib/validation";
 
 /**
  * POST /api/agents/register
@@ -24,34 +25,30 @@ import { rateLimit } from "@/lib/rate-limit";
  */
 export async function POST(req: NextRequest) {
   // IP-based rate limit: 5 registrations per hour per IP
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const rateLimited = rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rateLimited = await rateLimit(`register:${ip}`, 5, 60 * 60 * 1000);
   if (rateLimited) return rateLimited;
 
-  let body: any;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json(
       { error: "Invalid or missing JSON body" },
       { status: 400 }
     );
   }
-  const { name, type, capabilities } = body;
 
-  if (!name || !type) {
+  const parsed = RegisterSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Required fields: name, type (buyer | vendor | both)" },
+      { error: "Invalid request", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
 
-  if (!["buyer", "vendor", "both"].includes(type)) {
-    return NextResponse.json(
-      { error: "type must be: buyer, vendor, or both" },
-      { status: 400 }
-    );
-  }
+  const { name, type, capabilities } = parsed.data;
 
   // Generate API key
   const rawKey = `pk_${type}_${name.toLowerCase().replace(/[^a-z0-9]/g, "")}_${crypto.randomBytes(12).toString("hex")}`;
@@ -66,9 +63,11 @@ export async function POST(req: NextRequest) {
       api_key_hash: hash,
       api_key_prefix: keyPrefix,
       balance: type === "buyer" || type === "both" ? 25.0 : 0.0, // Free starter credits for buyers
-      capabilities: capabilities ?? [],
+      capabilities,
     })
-    .select("id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at")
+    .select(
+      "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"
+    )
     .single();
 
   if (error) {
