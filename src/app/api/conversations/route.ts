@@ -105,6 +105,9 @@ export async function GET(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
 
+  const rateLimited = await rateLimit(agent!.id);
+  if (rateLimited) return rateLimited;
+
   const status = req.nextUrl.searchParams.get("status");
   const role = req.nextUrl.searchParams.get("role");
 

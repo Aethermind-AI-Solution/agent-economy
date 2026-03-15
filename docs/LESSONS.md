@@ -202,3 +202,70 @@ if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
   // Only load dotenv in non-production Node.js contexts
 }
 ```
+
+---
+
+## Sprint 2 Testing Session (2026-03-15)
+
+### Lesson 20: Fixed-window rate limiter test must stay within one window
+
+**Problem:** Testing the rate limiter by sending 62 sequential HTTP requests appeared to fail — all requests returned 200. But the rate limiter IS working.
+
+**Root cause:** Vercel serverless cold starts make the first requests slow (~1-2s each). 62 sequential requests at ~1s each = ~62 seconds — crossing 2 minute boundaries. The counts were split: `09:40: 10, 09:41: 42, 09:42: 10`. No single window reached 60.
+
+**Rule:** To test a fixed-window rate limiter, send requests in parallel (not sequentially) to ensure they land in the same window. Alternatively, verify directly against the counter table after the test.
+
+**Diagnostic:** Query `agent_rate_limits` table directly to see actual counts per window:
+```sql
+SELECT * FROM agent_rate_limits WHERE key = '{agent_id}' ORDER BY window_start DESC LIMIT 5;
+```
+
+---
+
+### Lesson 21: GET handlers were missing rateLimit() — Sprint 1 oversight
+
+**Problem:** Sprint 1 added `await rateLimit(agent!.id)` to POST/PATCH handlers but forgot to add it to GET handlers:
+- `GET /api/agents/me` — no rate limit
+- `GET /api/conversations` — no rate limit
+
+**Fix:** Added `await rateLimit(agent!.id)` to both GET handlers in Sprint 2 testing.
+
+**Rule:** When adding rate limiting to a route file, check ALL exported HTTP method handlers (GET, POST, PATCH, etc.), not just the first one.
+
+---
+
+### Lesson 22: Next.js SSR embeds component JSON alongside rendered HTML
+
+**Observation:** When checking for "Export CSV" in the page HTML, `grep -c` returns 2 instead of 1 even though the button renders once visually.
+
+**Root cause:** Next.js Server Components serialize the component tree as JSON and embed it in the HTML for hydration. The button text appears once in the rendered HTML and once in the JSON payload (`__next_f` script).
+
+**Rule:** When grepping for visible text in Next.js SSR pages, expect 2 occurrences of any rendered string — once in HTML, once in the embedded component JSON. This is normal and not a bug.
+
+---
+
+### Lesson 23: conversation_events only captures events AFTER migration + deployment
+
+**Observation:** Only 2 of 14 conversations had a State Timeline. The other 12 showed nothing.
+
+**Root cause:** The `conversation_events` table didn't exist when the 12 older conversations were created. The fire-and-forget insert (`Promise.all([supabase.from("conversation_events").insert(...)...]).catch(...)`) silently drops on table-not-found errors.
+
+**Rule:** Audit log tables are append-only and only capture events going forward from when they were created. Pre-existing data has no retroactive event history. Document this clearly in UI — e.g., "State timeline available for transactions from [date]".
+
+---
+
+### Lesson 24: Supabase REST API is the fastest way to verify RPC and table state
+
+**Pattern used during Sprint 2 testing:**
+```bash
+# Test an RPC function directly
+curl -s -X POST "$SUPABASE_URL/rest/v1/rpc/check_rate_limit" \
+  -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"p_key":"test","p_window_start":"2026-03-15T09:00:00.000Z","p_limit":3}'
+
+# Query a table directly
+curl -s "$SUPABASE_URL/rest/v1/agent_rate_limits?key=eq.{id}&order=window_start.desc" \
+  -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY"
+```
+Faster than writing a test script and avoids Vercel cold start noise.

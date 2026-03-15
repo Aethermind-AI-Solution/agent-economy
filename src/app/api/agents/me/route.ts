@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
 import { UpdateAgentSchema } from "@/lib/validation";
 
 /**
@@ -12,6 +13,9 @@ import { UpdateAgentSchema } from "@/lib/validation";
 export async function GET(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
+
+  const rateLimited = await rateLimit(agent!.id);
+  if (rateLimited) return rateLimited;
 
   // Full profile
   const { data: profile } = await supabase
