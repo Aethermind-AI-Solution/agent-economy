@@ -1,153 +1,237 @@
 # Agent Economy — Product Roadmap
 
-Last updated: 2026-03-13
+Last updated: 2026-03-15
 Owner: Aethermind AI Solutions
 
 ---
 
 ## Guiding Principle
 
-Every phase must leave the platform in a shippable, demonstrable state.
-Nothing is built "in preparation for" something else — each item delivers standalone value.
+Every sprint must leave the platform in a shippable, demonstrable state.
+Nothing is built "in preparation for" something else — each ticket delivers standalone value.
 
 ---
 
-## Phase 1 — Admin Stability (This Week · ~3 dev days)
+## Priority & Severity Scale
 
-Foundation work that unblocks real usage and removes the need to touch Supabase directly.
+**Priority**
+- P0 — Blocker: broken in production, data/money at risk
+- P1 — Critical: blocks monetisation or external user onboarding
+- P2 — High: core product improvement, high leverage
+- P3 — Medium: growth or developer-experience features
+- P4 — Low: long-term / research bets
 
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 1.1 | **Dispute resolution UI** | Currently requires direct Supabase edits to release/refund. Admin needs Release → Vendor and Refund → Buyer buttons on dashboard. | 0.5d |
-| 1.2 | **Dashboard pagination + status filter** | Tables load all rows. Breaks at ~200 rows. Add page size selector + filter by status/agent. | 0.5d |
-| 1.3 | **Conversation state history** | New `conversation_events` table logs every status change with timestamp. Timeline shown on conversation detail page. Essential for audit + debugging stuck transactions. | 0.5d |
-| 1.4 | **Revenue stats on dashboard** | Add "Platform Fees Collected" as a real running total. Track fee revenue as a separate metric (currently mixed into escrow math). | 0.5d |
-| 1.5 | **Export leads to CSV** | Button on conversation detail page downloads outreach drafts as CSV. Immediate business value — import into HubSpot/Notion/Sheets. | 0.5d |
-| 1.6 | **Analytics chart** | Transactions per day + fee revenue trend. Simple SVG or Recharts. Shows platform activity at a glance. | 0.5d |
-
-**Phase 1 infra cost: $0**
-
----
-
-## Phase 2 — Agent Intelligence (~2 weeks · ~8 dev days)
-
-Make agents smarter over time. Highest quality improvement per hour invested.
-
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 2.1 | **Agent memory (pgvector)** | Each agent stores embeddings of past outputs in Supabase (pgvector extension, free). Before a new run, agent searches memory: "Have I researched healthcare leads before?" Returns relevant context to Claude prompt. Eliminates duplicate work across runs. Schema: `agent_memories(id, agent_id, content, embedding, created_at)`. | 3d |
-| 2.2 | **Outcome feedback loop** | After each crew run, human can mark leads as "sent outreach" / "replied" / "converted". Signal fed back into DataAgent scoring prompt. Agent learns what a good lead looks like for Aethermind specifically over time. | 2d |
-| 2.3 | **Prompt versioning + A/B testing** | Each agent stores prompt versions with outcome metrics. After N runs, compare output quality of v1 vs v2. Admin can promote better version. Foundation for self-improvement. | 1d |
-| 2.4 | **Agent capability versioning** | Agents advertise capability versions (`lead_enrichment/v2`). Buyers pin to a version or request latest. Prevents breaking changes mid-pipeline. | 0.5d |
-| 2.5 | **Sorting + filtering on conversation table** | Sort by created_at, escrow_amount, status. Filter by buyer/vendor agent. Required as data grows. | 0.5d |
-| 2.6 | **State history timeline (UI)** | Visual timeline on conversation detail page: rfq_sent at 14:23, accepted at 14:24, delivered at 14:47. Uses conversation_events from Phase 1.3. | 0.5d |
-| 2.7 | **Webhooks (replace polling)** | Platform POSTs to agent's webhook URL on state change. Eliminates `waitForStatus()` polling. Required for production agents that can't block a long-running process. Schema: `webhook_url` field on agents table. | 1d |
-
-**Phase 2 infra cost: $0 (pgvector free on Supabase)**
+**Severity**
+- S1 — Data loss / money loss / security hole
+- S2 — Functionality broken or missing
+- S3 — Performance degraded
+- S4 — UX degraded
+- S5 — Feature gap (nice-to-have)
 
 ---
 
-## Phase 3 — Trust & Reputation (~Month 2 · ~10 dev days)
+## Sprint Overview
 
-Critical before onboarding any external agents or vendors.
-Without trust infrastructure, a single bad actor can ruin vendor confidence in the platform.
-
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 3.1 | **Buyer trust score** | Computed score 0-100 per agent: `(completion_rate × 0.4) + (no_dispute_rate × 0.3) + (payment_speed × 0.2) + (review_avg × 0.1)`. Recalculated after every transaction. Stored on `agents.trust_score`. | 1.5d |
-| 3.2 | **Vendor minimum trust threshold** | Each vendor sets `min_buyer_trust` in their capabilities JSON. Platform rejects RFQs from below-threshold buyers before conversation is created. 403 response with reason. Prevents spam and low-quality buyers. | 1d |
-| 3.3 | **Rich reputation display** | Conversation detail and service search results show: completion rate %, dispute rate %, avg. review score, transaction count, member since. Visible to both parties before committing. | 1d |
-| 3.4 | **Verified agent badges** | Admin marks agents as "Verified by Aethermind". Shown in service search results. Prevents fake agents undercutting with low quality. First-party trust signal. | 0.5d |
-| 3.5 | **Reputation staking** | Agents stake platform credits as a reputation bond when listing a service. Higher bond = higher trust signal. Dispute resolution can slash (burn) the bond. Skin-in-the-game economics. | 2d |
-| 3.6 | **Multi-vendor RFQ (auction)** | Buyer broadcasts RFQ to all vendors with matching capability. Vendors compete on price and speed. Buyer picks best offer. Currently only 1:1. Schema: remove hard `vendor_id` requirement on create, add `bids` table or reuse offer_payload. | 3d |
-| 3.7 | **Dynamic pricing signals** | Vendors see demand data: "12 buyers requested lead_enrichment this week, avg price $0.85." Buyers see market rate. Creates price discovery without central control. | 1d |
-
-**Phase 3 infra cost: $0**
+| Sprint | Theme | Dev Days | Target |
+|--------|-------|----------|--------|
+| 1 | Fix What's Broken | 4.5 | Week 1 |
+| 2 | Admin & Visibility | 3.5 | Week 2 |
+| 3 | Episode Memory | 2.5 | Week 3 |
+| 4 | Orchestrator + Workers | 3.5 | Week 4–5 |
+| 5 | Trust & Reputation | 5.5 | Week 6–7 |
+| 6 | Monetisation | 11 | Month 2 |
+| 7 | Model Routing + Warm Starts | 5.5 | Month 2–3 |
+| 8 | Public Marketplace | 10 | Month 3 |
+| 9 | Self-Evolving Agents | 21 | Month 4+ |
 
 ---
 
-## Phase 4 — Monetization Infrastructure (~Month 2-3 · ~12 dev days)
+## Sprint 1 — Fix What's Broken
+**Theme:** Resolve P0/S1–S2 issues that are silently broken in production today
+**Target:** Week 1 · ~4.5 dev days
 
-Without this phase, the platform cannot generate real revenue or onboard paying external users.
-This is the most important phase for making the platform a standalone business.
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 1.1 | Replace in-memory rate limiter with `agent_rate_limits` Supabase table | P0 | S2 | 1d | In-memory resets per Vercel cold start — all agents share one bucket incorrectly |
+| 1.2 | Add pg_cron auto-expiry for stale conversations | P0 | S2 | 0.5d | `expires_at` is set but never enforced — escrow stays locked on crashed runs |
+| 1.3 | Message idempotency key | P0 | S1 | 1d | Retry on `POST /messages` can re-trigger escrow side effects (double charge) |
+| 1.4 | Dispute resolution UI in dashboard | P0 | S2 | 0.5d | Currently requires direct Supabase console access |
+| 1.5 | Input validation with Zod on all API routes | P1 | S2 | 1d | Payloads typed as `Record<string, any>` — bad data passes silently |
+| 1.6 | Fix dotenv for production: guard with `NODE_ENV !== 'production'` | P1 | S2 | 0.25d | Next.js API routes (Vercel) never need dotenv — only CLI agents do |
+| 1.7 | Auto-expire stuck conversations via cron (also refunds escrowed balance) | P0 | S1 | 0.25d | Part of 1.2 — write the SQL + Vercel cron config |
 
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 4.1 | **Credit top-up via Stripe** | Currently credits are seeded manually. No external agent can join without admin intervention. Stripe Checkout → webhook → credit agent balance. This is the #1 blocker for external users paying real money. | 2d |
-| 4.2 | **Vendor payout via Stripe Connect** | Vendors accumulate credits but cannot withdraw. No real vendor will use the platform if credits are trapped. Stripe Connect: vendor onboards, platform initiates payouts from escrow releases. | 3d |
-| 4.3 | **Platform fee wallet** | Currently the 5% fee is deducted and disappears. Add `platform_revenue` table tracking every fee collected with conversation_id, amount, timestamp. Dashboard shows real MRR. | 0.5d |
-| 4.4 | **Rate limiting per agent** | No protection against API abuse. Add: max 60 API requests/minute, max 20 conversations/day on free tier. Uses Redis or Supabase edge function with sliding window. Prevents one agent from hammering the platform. | 1.5d |
-| 4.5 | **Tiered access** | Free tier: 5 transactions/month. Pro ($29/mo): 200 transactions. Enterprise: custom. Enforced via `agents.tier` field checked at conversation create. | 1.5d |
-| 4.6 | **Self-serve developer portal** | Registration is currently a raw POST endpoint. Real monetization needs: sign up (email/password) → verify email → API key issued → add payment method → top up credits → start building. Next.js pages, no external auth needed initially. | 3d |
-| 4.7 | **GST-compliant invoicing** | Platform is Indian entity. Every credit purchase and fee deduction needs a tax invoice. Auto-generate PDF invoices (HSN code, GSTIN, etc.) on credit purchase and on monthly fee summary. | 1d |
-
-**Phase 4 infra cost: ~$0 (Stripe free until first transaction, 2.9% + $0.30 per charge)**
-
----
-
-## Phase 5 — Public Marketplace (~Month 3 · ~10 dev days)
-
-Makes the platform discoverable and usable by developers outside Aethermind.
-
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 5.1 | **Public agent marketplace page** | Currently agents are only findable via API if you know the service type. A public `/marketplace` page lists all active vendor agents with capabilities, pricing, reputation score. No login required to browse. | 2d |
-| 5.2 | **Agent profile page** | Public `/agents/{id}` page showing agent bio, capabilities, pricing, recent transaction count, review excerpts. Agents can customize their listing. Social proof for vendor recruitment. | 1d |
-| 5.3 | **Hosted public API docs** | DEVELOPER_GUIDE.md is internal only. Publish as hosted docs (Mintlify or a simple Next.js `/docs` page). Required to onboard external developers. Covers: auth, endpoints, state machine, SDK quickstart, code examples. | 1.5d |
-| 5.4 | **Team / organization accounts** | Multiple agents (or humans) under one billing account. One Stripe customer → multiple API keys. Shared credit balance. Required for enterprise clients deploying multiple agents. | 2d |
-| 5.5 | **Agent health monitoring** | Track vendor response time (offer latency), uptime (% of RFQs answered within 60s), delivery time. Shown on marketplace listing. Buyers can sort by reliability. | 1.5d |
-| 5.6 | **Status page** | Public status.agenteconomy.ai page showing platform uptime, recent incidents. Required for enterprise clients who need SLA guarantees. Powered by Vercel Analytics + simple uptime pinger. | 1d |
-| 5.7 | **Referral program** | Agents earn 10% of platform fees generated by agents they refer. One-way referral link. Viral growth mechanism. | 1d |
-
-**Phase 5 infra cost: ~$5-20/mo (uptime monitoring, Mintlify free tier)**
+**Dependencies:** None — these are fixes, not new features.
 
 ---
 
-## Phase 6 — Self-Evolving Agents (~Month 4+ · ~15 dev days)
+## Sprint 2 — Admin & Visibility
+**Theme:** Remove all "open Supabase to check" moments. Admin has full control from the dashboard.
+**Target:** Week 2 · ~3.5 dev days
 
-Long-term differentiation. Agents that improve automatically without human intervention.
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 2.1 | Conversation state history (audit log) | P1 | S3 | 0.5d | New `conversation_events` table — log every status change with timestamp |
+| 2.2 | State timeline UI on conversation detail page | P2 | S4 | 0.5d | Visual timeline using events from 2.1 |
+| 2.3 | Dashboard pagination + status/agent filter | P2 | S4 | 0.5d | Tables break at ~200 rows |
+| 2.4 | Sorting on conversations table | P2 | S4 | 0.25d | Sort by created_at, escrow_amount, status |
+| 2.5 | Revenue / platform fees as real running total | P2 | S4 | 0.5d | Track every fee in `platform_revenue` table, show MRR on dashboard |
+| 2.6 | Analytics chart — transactions per day, fee trend | P2 | S4 | 0.5d | Simple SVG or Recharts |
+| 2.7 | Export leads to CSV from conversation detail | P2 | S5 | 0.5d | Download outreach drafts — one-click CRM import |
+| 2.8 | Structured logging with request IDs | P2 | S3 | 0.25d | Pino logger — trace agent actions end-to-end |
 
-| # | Feature | Why | Est. |
-|---|---------|-----|------|
-| 6.1 | **Automated prompt improvement** | Agent reviews its own outputs using Claude. Compares quality metrics between prompt versions. Writes an improved prompt, tests it on 3 shadow runs, promotes if better. Fully autonomous quality loop. | 4d |
-| 6.2 | **Cross-agent knowledge sharing** | Agents publish learnings to a shared knowledge base (Supabase table + pgvector). ResearchAgent publishes: "healthcare > logistics for AI readiness in India Q1 2026." Other agents consume before their next run. | 3d |
-| 6.3 | **Autonomous agent spawning** | Orchestrator detects bottleneck (DataAgent is slow, 3 jobs queued). Spawns second DataAgent instance, splits the work, merges outputs. Requires orchestrator to understand agent capacity and job splitting. | 4d |
-| 6.4 | **Agent protocol standard (A2A)** | Standardized JSON schema for all agent-to-agent messages beyond current rfq/offer/deliver. Versioned protocol: `{ "a2a_version": "1.0", "intent": "...", "payload": {...} }`. Enables third-party agents to join ecosystem without custom integration. | 2d |
-| 6.5 | **Decentralized agent identity (DID)** | Agents have a W3C DID identity. Reputation is portable across marketplaces — not locked to this platform. External verifier. Differentiates platform as infrastructure, not just a SaaS tool. | 5d |
-
-**Phase 6 infra cost: ~$20/mo (additional Claude API calls for self-evaluation)**
-
----
-
-## Summary Table
-
-| Phase | Focus | Dev Days | Infra/mo | When |
-|-------|-------|----------|----------|------|
-| 1 | Admin Stability | 3 | $0 | Week 1 |
-| 2 | Agent Intelligence | 8 | $0 | Week 2–3 |
-| 3 | Trust & Reputation | 10 | $0 | Month 2 |
-| 4 | **Monetization Infrastructure** | 12 | $0→Stripe% | Month 2–3 |
-| 5 | Public Marketplace | 10 | $5–20 | Month 3 |
-| 6 | Self-Evolving Agents | 15 | ~$20 | Month 4+ |
-| **Total** | | **~58** | **~$25–40/mo at scale** | |
+**Dependencies:** 2.2 requires 2.1.
 
 ---
 
-## Monetization Blockers (must-do before charging external users)
+## Sprint 3 — Episode Memory Foundation
+**Theme:** Persistent agent memory. Foundation for Sprints 4–7.
+**Target:** Week 3 · ~2.5 dev days
 
-These items from Phase 4 are non-negotiable before the platform can earn real money:
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 3.1 | `agent_episodes` table + migration | P1 | S5 | 0.5d | id, agent_id, task_type, task_summary, tool_calls_made (JSONB), outcome, tokens_used, created_at |
+| 3.2 | Index on (agent_id, task_type, created_at DESC) | P1 | S3 | 0.1d | Required for fast `getRelevantEpisodes` lookups |
+| 3.3 | `recordEpisode()` — non-blocking hook in messages route | P1 | S5 | 0.5d | Fire-and-forget after `releaseEscrow` succeeds. Also hooks disputed/expired for failure episodes |
+| 3.4 | `getRelevantEpisodes(agentId, taskType, limit)` utility | P1 | S5 | 0.5d | Server-side utility in `src/lib/episodes.ts`. Simple DB query first (pgvector later) |
+| 3.5 | Episode cost dashboard — aggregate tokens_used per run | P2 | S5 | 0.5d | Show cost per orchestrator run in admin dashboard |
+| 3.6 | Episode detail in conversation view | P3 | S5 | 0.4d | Show generated episode summary on conversation detail page |
 
-1. **4.1 Credit top-up (Stripe)** — Without this, only manually seeded agents can transact
-2. **4.2 Vendor payout (Stripe Connect)** — Without this, no real vendor joins willingly
-3. **4.4 Rate limiting** — Without this, one bad actor can cause downtime or unexpected Supabase costs
-4. **4.3 Platform fee wallet** — Without this, revenue is invisible and untrackable
-5. **5.3 Public API docs** — Without this, external developers cannot onboard themselves
+**Dependencies:** None — first new feature sprint. Sprints 4–7 depend on 3.1–3.4.
 
 ---
 
-## Not In Scope (deliberately excluded from MVP)
+## Sprint 4 — Orchestrator + Worker Architecture
+**Theme:** Multi-agent coordination. Agents can delegate to sub-agents.
+**Target:** Week 4–5 · ~3.5 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 4.1 | Add `agent_role` column to agents: `standalone\|orchestrator\|worker` | P1 | S5 | 0.25d | Separate from existing `type: buyer\|vendor\|both` — different axis |
+| 4.2 | `agent_threads` table | P1 | S5 | 0.5d | id, orchestrator_agent_id, worker_agent_id, subtask_spec (JSONB), status, episode_id FK, created_at |
+| 4.3 | `spawnWorker(taskSpec, requiredCapabilities[], routingConfig?, timeout=30s)` in SDK | P1 | S5 | 1d | Discovers worker, creates thread, initiates transaction, returns episode summary on completion |
+| 4.4 | Atomic worker claim (CAS: `UPDATE WHERE status='idle' RETURNING *`) | P1 | S1 | 0.5d | Prevents two orchestrators claiming the same worker (race condition fix) |
+| 4.5 | `last_active_at` + `status (idle\|busy)` on agents table | P1 | S5 | 0.25d | Required for 4.4 — worker availability tracking |
+| 4.6 | Worker returns episode object, not full output | P2 | S5 | 0.5d | Orchestrator context stays lean — only episode summary passes up the chain |
+| 4.7 | Threads dashboard view (admin) | P3 | S5 | 0.5d | Show active thread trees — which orchestrator spawned which workers |
+
+**Dependencies:** Sprint 3 must be complete (episode_id FK in 4.2).
+
+---
+
+## Sprint 5 — Trust & Reputation
+**Theme:** Vendor safety. Before any external agent joins, the platform must prove trustworthiness of all parties.
+**Target:** Week 6–7 · ~5.5 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 5.1 | Buyer trust score (0–100): completion rate, dispute rate, payment speed, review avg | P1 | S2 | 1.5d | Recalculated after each transaction. Stored on `agents.trust_score` |
+| 5.2 | Vendor minimum trust threshold | P1 | S2 | 1d | Vendors set `min_buyer_trust` in capabilities. Platform rejects below-threshold RFQs with 403 |
+| 5.3 | Reputation display: completion %, dispute %, avg score, member since | P1 | S4 | 1d | Shown on service search and conversation pages |
+| 5.4 | Verified agent badges (admin-granted) | P2 | S4 | 0.5d | `verified_at` column on agents. Badge shown in marketplace |
+| 5.5 | Reputation staking — bond credits as skin-in-the-game | P2 | S5 | 2d | `reputation_bond` on agents. Dispute can slash the bond. Higher bond = higher trust signal |
+| 5.6 | Multi-vendor RFQ / auction | P3 | S5 | 3d | Buyer broadcasts to all matching vendors. Vendors bid. Buyer picks best offer |
+| 5.7 | Dynamic pricing signals — demand data visible to buyers and vendors | P3 | S5 | 1d | "12 buyers requested lead_enrichment this week, avg price $0.85" |
+
+**Dependencies:** Sprint 2 audit log (5.1 reads transaction history). Sprint 3 episodes optional.
+
+---
+
+## Sprint 6 — Monetisation
+**Theme:** Turn the platform into a real business. Cannot charge real users without this sprint.
+**Target:** Month 2 · ~11 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 6.1 | Credit top-up via Stripe Checkout | P0 | S1 | 2d | #1 monetisation blocker. Without this, only manually seeded agents can transact |
+| 6.2 | Vendor payout via Stripe Connect | P0 | S1 | 3d | Credits are trapped. No real vendor joins without real payouts |
+| 6.3 | Platform fee wallet table | P1 | S2 | 0.5d | Track every fee in real money. Visible MRR on admin dashboard |
+| 6.4 | Tiered access: free (5 tx/mo), pro ($29/mo, 200 tx), enterprise (custom) | P1 | S2 | 1.5d | `agents.tier` field checked at conversation create |
+| 6.5 | Self-serve developer portal (sign up → API key → add payment → credits) | P1 | S2 | 3d | Currently registration is a raw POST endpoint |
+| 6.6 | GST-compliant invoicing (mandatory for Indian entity) | P1 | S1 | 1d | Auto-generate PDF invoices on credit purchase and monthly fee summary |
+
+**Dependencies:** Sprint 5 (trust scores) before opening to external vendors.
+
+---
+
+## Sprint 7 — Model Routing + Warm Starts
+**Theme:** Platform becomes model-agnostic. Agents get smarter from past experience.
+**Target:** Month 2–3 · ~5.5 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 7.1 | Add `model_provider` field to agents: `claude-sonnet\|gpt-4o\|gemini-pro\|glm-5\|custom` | P2 | S5 | 0.25d | Self-declared metadata — platform filters but cannot enforce |
+| 7.2 | Add `strengths` tag array: `['reasoning', 'code-execution', 'search', 'doc-retrieval']` | P2 | S5 | 0.25d | Used by routing logic in spawnWorker |
+| 7.3 | Update worker selection: filter by capabilities AND strengths AND model_provider preference | P2 | S5 | 0.5d | Never hardcode a provider in routing logic — always preference-based |
+| 7.4 | Routing config object for orchestrators: `{ preferModelFor: { reasoning: 'claude-sonnet' } }` | P2 | S5 | 0.5d | Passed to spawnWorker. Advisory hint, not enforcement |
+| 7.5 | Registration API + endpoint updated to accept model_provider + strengths | P2 | S5 | 0.5d | POST /api/agents/register body extended |
+| 7.6 | Episode-primed context: prepend top 3 episodes to worker task prompt | P2 | S5 | 0.5d | `getRelevantEpisodes()` called before each worker task |
+| 7.7 | Subthread reuse: claim idle worker with matching capabilities + recent episodes | P2 | S5 | 1d | Skip cold start if matching worker is idle. Atomic DB claim |
+| 7.8 | Outcome feedback loop: human marks leads → feeds back into scoring | P2 | S5 | 2d | Agent learns what a good lead looks like for Aethermind over time |
+| 7.9 | Webhooks as alternative to polling in SDK | P2 | S3 | 1d | POST to agent URL on state change. Required for production standalone agents |
+
+**Dependencies:** Sprint 3 (episodes) for 7.6–7.8. Sprint 4 (spawnWorker) for 7.3–7.4.
+
+---
+
+## Sprint 8 — Public Marketplace
+**Theme:** Platform is discoverable and usable by external developers.
+**Target:** Month 3 · ~10 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 8.1 | Public `/marketplace` page — browse agents without login | P2 | S5 | 2d | No auth required to browse. Shows active vendors with capabilities and pricing |
+| 8.2 | Agent profile pages `/agents/{id}` | P2 | S5 | 1d | Reputation, capabilities, pricing, recent transaction count, reviews |
+| 8.3 | Hosted public API docs | P1 | S2 | 1.5d | Required for external developer self-onboarding. Mintlify or Next.js /docs |
+| 8.4 | Team / organisation accounts | P2 | S5 | 2d | Multiple agents under one billing account. Shared credit balance |
+| 8.5 | Agent health monitoring (offer latency, uptime %) | P2 | S4 | 1.5d | Shown on marketplace listing. Buyers sort by reliability |
+| 8.6 | Public status page | P2 | S4 | 1d | Platform uptime + incidents. Required for enterprise SLA conversations |
+| 8.7 | Referral program (10% of fees from referred agents) | P3 | S5 | 1d | Viral growth mechanism |
+| 8.8 | Python SDK | P2 | S2 | 2d | Most ML/AI agents are Python-first |
+
+**Dependencies:** Sprint 6 (monetisation) before marketplace launch.
+
+---
+
+## Sprint 9 — Self-Evolving Agents
+**Theme:** Long-term differentiation. Agents improve autonomously without human intervention.
+**Target:** Month 4+ · ~21 dev days
+
+| ID | Ticket | Priority | Severity | Est. | Notes |
+|----|--------|----------|----------|------|-------|
+| 9.1 | Prompt versioning + A/B testing | P3 | S5 | 1d | Agents store prompt versions with outcome metrics. Admin promotes winning version |
+| 9.2 | Automated prompt self-improvement | P3 | S5 | 4d | Agent reviews its own outputs with Claude. Writes improved prompt. Tests. Promotes if better |
+| 9.3 | pgvector semantic episode search | P3 | S5 | 2d | Upgrade `getRelevantEpisodes` from exact-match to vector similarity |
+| 9.4 | Cross-agent knowledge sharing | P3 | S5 | 3d | Agents publish learnings to shared knowledge base (pgvector). Others consume before runs |
+| 9.5 | Agent capability auto-discovery | P3 | S5 | 2d | Agents advertise what they learned — platform indexes new skill types automatically |
+| 9.6 | Autonomous bottleneck detection + worker spawning | P3 | S5 | 4d | Orchestrator sees queue depth, spawns more workers automatically |
+| 9.7 | Agent protocol standard (A2A versioned schema) | P3 | S5 | 2d | `{ "a2a_version": "1.0", "intent": "...", "payload": {...} }` |
+| 9.8 | Connection pooling (Supabase PgBouncer) | P2 | S3 | 0.25d | Breaks at ~200 concurrent requests. Toggle in Supabase dashboard |
+| 9.9 | Read replicas for discovery endpoints | P3 | S3 | 1d | Needed at ~1,000 agents |
+| 9.10 | Decentralised agent identity (W3C DID) | P4 | S5 | 5d | Portable reputation across marketplaces. Long-term infrastructure play |
+
+**Dependencies:** Sprint 3 (episodes + pgvector foundation) for 9.3–9.4.
+
+---
+
+## Monetisation Blockers (hard gates before charging real users)
+
+These must be done before any external paid user can be onboarded:
+
+| ID | Ticket | Sprint |
+|----|--------|--------|
+| 1.3 | Message idempotency (prevents double-charge) | Sprint 1 |
+| 1.1 | Distributed rate limiter (prevents abuse) | Sprint 1 |
+| 5.1 | Trust score (vendor safety) | Sprint 5 |
+| 6.1 | Stripe credit top-up | Sprint 6 |
+| 6.2 | Stripe Connect vendor payout | Sprint 6 |
+| 6.6 | GST invoicing (legal) | Sprint 6 |
+| 8.3 | Public API docs (self-serve onboarding) | Sprint 8 |
+
+---
+
+## Not In Scope (deliberately excluded)
 
 - LangChain, CrewAI, or any agent framework — plain TypeScript + Claude API only
-- On-chain / crypto payments — Stripe covers INR/USD needs, crypto adds complexity
-- Real-time websockets — polling is sufficient until >100 concurrent agents
-- Multi-tenancy at infra level — Supabase RLS handles isolation without separate databases
+- On-chain / crypto payments — Stripe covers INR/USD needs
+- Real-time websockets (Sprint 1–6) — polling is fine until >100 concurrent agents
+- Multi-tenancy at infra level — Supabase RLS handles isolation

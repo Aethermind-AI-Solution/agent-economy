@@ -1,6 +1,6 @@
 # Lessons Learned — Agent Economy Platform
 
-Last updated: 2026-03-13
+Last updated: 2026-03-15
 
 ---
 
@@ -100,3 +100,105 @@ Last updated: 2026-03-13
 | findCompanies | claude-opus-4-6 | 8192 | ~15,000 chars (50 companies) |
 | enrichAndScore | claude-opus-4-6 | 8192 | ~17,000 chars (20 leads) |
 | draftOutreach | claude-opus-4-6 | 8192 | ~14,000 chars (10 drafts) |
+
+---
+
+## Architecture Planning Session (2026-03-15)
+
+### Lesson 14: agent_type vs agent_role — different axes, don't conflate
+
+**Problem:** The spec for orchestrator/worker asked for an `agent_type: 'orchestrator' | 'worker'` field —
+but the agents table already has `type: 'buyer' | 'vendor' | 'both'`. These are completely different dimensions.
+
+- `type` = **marketplace role** (who initiates payment, who delivers)
+- `agent_role` = **hierarchy position** (who coordinates, who executes)
+
+An orchestrator agent can simultaneously be `type: both` (buys from workers, sells to clients) and `agent_role: orchestrator`.
+
+**Rule:** Never conflate marketplace role with architectural hierarchy. Use `agent_role` as a separate column.
+
+---
+
+### Lesson 15: model_provider is advisory metadata, not platform-enforced routing
+
+**Problem:** Spec said "platform routes by model_provider preference."
+The platform never calls AI APIs — agents do that locally with their own keys.
+
+**Clarification:** `model_provider` is self-declared metadata on the agent profile.
+The platform can filter search results by it, but cannot verify or enforce it.
+Routing config is a preference hint that influences worker selection scoring — not a hard constraint.
+
+**Rule:** Any "model routing" on this platform is advisory. Document it as preference-based, not guarantee-based.
+
+---
+
+### Lesson 16: Subthread reuse requires atomic DB claim to prevent race conditions
+
+**Problem:** Checking worker `status = 'idle'` and then setting it to `'busy'` in two steps
+creates a TOCTOU (time-of-check/time-of-use) race. Two orchestrators can both see the same idle
+worker simultaneously and both try to claim it.
+
+**Fix:** Use a single atomic CAS (compare-and-swap) update:
+```sql
+UPDATE agents
+SET status = 'busy', last_active_at = now()
+WHERE id = $1 AND status = 'idle'
+RETURNING *;
+```
+If `RETURNING` is empty, the worker was already claimed — try the next candidate.
+
+**Rule:** Any "check-then-act" on shared mutable state must use a single atomic DB operation.
+
+---
+
+### Lesson 17: In-memory rate limiter is broken on Vercel serverless
+
+**Problem:** `rate-limit.ts` uses `Map<string, RateEntry>` stored in module-level memory.
+On Vercel, each cold start creates a new function instance with a fresh Map.
+Result: each agent gets a fresh rate limit window on every cold start — the limiter does nothing.
+
+**Fix:** Replace with a Supabase table:
+```sql
+CREATE TABLE agent_rate_limits (
+  agent_id    UUID REFERENCES agents(id),
+  window_start TIMESTAMPTZ,
+  request_count INTEGER,
+  PRIMARY KEY (agent_id, window_start)
+);
+```
+pg_cron deletes rows older than the window. Supabase is shared across all Vercel instances.
+
+**Rule:** Never store rate limit state in process memory for serverless functions. Always use a shared external store.
+
+---
+
+### Lesson 18: Build sequentially — each sprint is a hard dependency for the next
+
+**Dependency chain discovered during planning:**
+- Sprint 3 (episodes) → Sprint 4 needs `episode_id FK` in agent_threads
+- Sprint 3 (getRelevantEpisodes) → Sprint 7 needs it for episode-primed warm starts
+- Sprint 4 (spawnWorker) → Sprint 7 needs its routing logic to add model preference
+- Sprint 5 (trust scores) → Sprint 6 needs them before opening to external vendors
+- Sprint 6 (Stripe) → Sprint 8 marketplace launch requires working payments
+
+**Rule:** Don't start Sprint N+1 until Sprint N's foundation tickets (first 3–4 items) are done.
+Feature tickets within a sprint can overlap, but cross-sprint dependencies are hard.
+
+---
+
+### Lesson 19: dotenv belongs only in CLI agent files, not in Next.js API routes
+
+**Problem:** dotenv is called in some lib/ files. Next.js API routes run on Vercel, where env vars
+are injected by the platform at build/runtime — dotenv is not needed and causes confusion.
+
+**Rule:**
+- CLI agent files (`agents/*.ts`) → `dotenv.config()` is required (they run as Node processes)
+- Next.js API routes (`src/app/api/**`) → Never call dotenv. Use `process.env.X` directly.
+- Shared lib files (`src/lib/**`) → Never call dotenv. They run in both contexts; let the caller load env.
+
+Guard pattern for any shared util that might be called from both contexts:
+```typescript
+if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+  // Only load dotenv in non-production Node.js contexts
+}
+```
