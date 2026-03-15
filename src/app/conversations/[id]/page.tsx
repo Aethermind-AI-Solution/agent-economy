@@ -164,15 +164,36 @@ function RfqSection({ rfq }: { rfq: any }) {
   );
 }
 
-function DeliverySection({ delivery }: { delivery: any }) {
+function DeliverySection({ delivery, convId }: { delivery: any; convId: string }) {
   if (!delivery) return null;
   const artifact = delivery.artifacts?.[0];
-  if (artifact?.type === "scored_leads") return <ScoredLeadsTable leads={artifact.data} />;
-  if (artifact?.type === "outreach_drafts") return <OutreachDraftsCards drafts={artifact.data} />;
+  const exportable = artifact?.type === "scored_leads" || artifact?.type === "outreach_drafts";
+
   return (
     <div style={{ marginBottom: 32 }}>
-      <div style={sectionLabel}>Delivery Payload</div>
-      <pre style={jsonBlock}>{JSON.stringify(delivery, null, 2)}</pre>
+      {exportable && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <a
+            href={`/api/conversations/${convId}/export`}
+            style={{
+              display: "inline-block", padding: "6px 14px", borderRadius: 6,
+              fontSize: 12, fontFamily: "JetBrains Mono, monospace", fontWeight: 600,
+              background: "#059669", color: "white", textDecoration: "none",
+              letterSpacing: "0.5px",
+            }}
+          >
+            ↓ Export CSV
+          </a>
+        </div>
+      )}
+      {artifact?.type === "scored_leads" && <ScoredLeadsTable leads={artifact.data} />}
+      {artifact?.type === "outreach_drafts" && <OutreachDraftsCards drafts={artifact.data} />}
+      {!exportable && (
+        <div>
+          <div style={sectionLabel}>Delivery Payload</div>
+          <pre style={jsonBlock}>{JSON.stringify(delivery, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -333,7 +354,7 @@ export default async function ConversationDetail({
             </div>
           )}
 
-          <DeliverySection delivery={conv.delivery_payload} />
+          <DeliverySection delivery={conv.delivery_payload} convId={id} />
         </div>
       </body>
     </html>

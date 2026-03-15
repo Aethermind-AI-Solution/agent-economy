@@ -68,6 +68,90 @@ function statusColor(status: string) {
   return map[status] ?? "#6b7280";
 }
 
+function AnalyticsChart({ revenue }: { revenue: any[] }) {
+  const days: { label: string; txCount: number; fees: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayRevenue = revenue.filter((r: any) => r.created_at.slice(0, 10) === dateStr);
+    days.push({
+      label: dateStr.slice(5),
+      txCount: dayRevenue.length,
+      fees: dayRevenue.reduce((sum: number, r: any) => sum + Number(r.fee_amount), 0),
+    });
+  }
+
+  const maxTx = Math.max(...days.map((d) => d.txCount), 1);
+  const maxFees = Math.max(...days.map((d) => d.fees), 0.01);
+  const W = 800, H = 140;
+  const PAD = { top: 16, right: 16, bottom: 28, left: 36 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const slotW = chartW / 14;
+  const barW = slotW * 0.55;
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid #2a2a3a" }}>
+        <div style={{ fontSize: 14, fontFamily: "JetBrains Mono, monospace", color: "#8888a0", textTransform: "uppercase", letterSpacing: "1.5px" }}>
+          Activity — Last 14 Days
+        </div>
+        <div style={{ display: "flex", gap: 20, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "#8888a0" }}>
+          <span><span style={{ color: "#3b82f6" }}>■</span> Transactions</span>
+          <span><span style={{ color: "#059669" }}>─</span> Fees ($)</span>
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: H, display: "block" }}>
+        {/* Grid lines */}
+        {[0, 0.5, 1].map((frac) => {
+          const y = PAD.top + chartH * (1 - frac);
+          return <line key={frac} x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#2a2a3a" strokeWidth={1} />;
+        })}
+        {/* Bars */}
+        {days.map((d, i) => {
+          const barH = Math.max((d.txCount / maxTx) * chartH, d.txCount > 0 ? 2 : 0);
+          const x = PAD.left + i * slotW + (slotW - barW) / 2;
+          const y = PAD.top + chartH - barH;
+          return <rect key={i} x={x} y={y} width={barW} height={barH} fill="#3b82f6" fillOpacity={0.35} rx={2} />;
+        })}
+        {/* Fee line */}
+        {maxFees > 0.01 && (
+          <polyline
+            points={days.map((d, i) => {
+              const x = PAD.left + i * slotW + slotW / 2;
+              const y = PAD.top + chartH - (d.fees / maxFees) * chartH;
+              return `${x},${y}`;
+            }).join(" ")}
+            fill="none" stroke="#059669" strokeWidth={1.5}
+          />
+        )}
+        {/* Fee dots */}
+        {days.map((d, i) => {
+          if (d.fees === 0) return null;
+          const x = PAD.left + i * slotW + slotW / 2;
+          const y = PAD.top + chartH - (d.fees / maxFees) * chartH;
+          return <circle key={i} cx={x} cy={y} r={2.5} fill="#059669" />;
+        })}
+        {/* X labels — every other day */}
+        {days.map((d, i) => {
+          if (i % 2 !== 0) return null;
+          const x = PAD.left + i * slotW + slotW / 2;
+          return (
+            <text key={i} x={x} y={H - 6} textAnchor="middle" fontSize={9} fill="#555570" fontFamily="JetBrains Mono, monospace">
+              {d.label}
+            </text>
+          );
+        })}
+        {/* Y labels */}
+        <text x={PAD.left - 4} y={PAD.top + 4} textAnchor="end" fontSize={9} fill="#555570" fontFamily="JetBrains Mono, monospace">{maxTx}</text>
+        <text x={PAD.left - 4} y={PAD.top + chartH / 2 + 4} textAnchor="end" fontSize={9} fill="#555570" fontFamily="JetBrains Mono, monospace">{Math.round(maxTx / 2)}</text>
+        <text x={PAD.left - 4} y={PAD.top + chartH} textAnchor="end" fontSize={9} fill="#555570" fontFamily="JetBrains Mono, monospace">0</text>
+      </svg>
+    </div>
+  );
+}
+
 export default async function Dashboard({
   searchParams,
 }: {
@@ -364,6 +448,9 @@ export default async function Dashboard({
               <div className="stat-value accent">${mrr.toFixed(2)}</div>
             </div>
           </div>
+
+          {/* Analytics Chart */}
+          <AnalyticsChart revenue={revenue} />
 
           {/* Agents */}
           <div className="section">

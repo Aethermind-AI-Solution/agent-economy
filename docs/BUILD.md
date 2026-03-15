@@ -1,27 +1,47 @@
 # Build Tracker — Agent Economy Platform
 
 Last updated: 2026-03-15
-Active sprint: Sprint 1 — Fix What's Broken
+Active sprint: Sprint 3 — Episode Memory
 
 ---
 
-## Current Sprint: Sprint 1
+## Current Sprint: Sprint 3
 
-**Goal:** Resolve all P0/S1–S2 issues that are silently broken in production.
-**Target:** Week 1 of 2026-03-15
+**Goal:** Give agents persistent memory of past transactions so they can learn and improve over time.
 
 | ID | Ticket | Status | Owner | Notes |
 |----|--------|--------|-------|-------|
-| 1.1 | Replace in-memory rate limiter with Supabase `agent_rate_limits` table | 🔲 Pending | — | Resets per Vercel cold start |
-| 1.2 | pg_cron auto-expiry for stale conversations | 🔲 Pending | — | `expires_at` never enforced today |
-| 1.3 | Message idempotency key | 🔲 Pending | — | S1 — retry can double-charge escrow |
-| 1.4 | Dispute resolution UI in dashboard | 🔲 Pending | — | Currently needs Supabase console |
-| 1.5 | Input validation (Zod) on all API routes | 🔲 Pending | — | Bad data passes silently |
-| 1.6 | Guard dotenv with `NODE_ENV !== 'production'` | 🔲 Pending | — | API routes on Vercel don't need dotenv |
+| 3.1 | `agent_episodes` table migration | 🔲 Pending | — | `supabase/migrations/005_agent_episodes.sql` |
+| 3.2 | `recordEpisode()` + `getRelevantEpisodes()` in `src/lib/episodes.ts` | 🔲 Pending | — | fire-and-forget hook after releaseEscrow |
+| 3.3 | Hook into messages route after releaseEscrow | 🔲 Pending | — | non-blocking, must not crash transaction |
 
 ---
 
 ## Completed Sprints
+
+### Sprint 2 — Admin & Visibility (2026-03-15)
+
+| ID | Ticket | Status |
+|----|--------|--------|
+| 2.1 | `conversation_events` audit log table | ✅ Done |
+| 2.2 | State timeline UI on conversation detail page | ✅ Done |
+| 2.3 | Dashboard pagination (25/page) | ✅ Done |
+| 2.4 | Sortable columns (Escrow ↑↓, Created ↑↓) | ✅ Done |
+| 2.5 | `platform_revenue` table + MRR stat | ✅ Done |
+| 2.6 | SVG analytics chart (transactions/day + fee trend) | ✅ Done |
+| 2.7 | CSV export button on conversation detail page | ✅ Done |
+| 2.8 | Structured JSON logging in messages + cron routes | ✅ Done |
+
+### Sprint 1 — Fix What's Broken (2026-03-15)
+
+| ID | Ticket | Status |
+|----|--------|--------|
+| 1.1 | Replace in-memory rate limiter with Supabase `agent_rate_limits` | ✅ Done |
+| 1.2 | Auto-expiry cron endpoint (`/api/cron/expire-conversations`) | ✅ Done |
+| 1.3 | Message idempotency key (`Idempotency-Key` header + cache table) | ✅ Done |
+| 1.4 | Dispute resolution UI + admin API | ✅ Done |
+| 1.5 | Zod input validation on all API routes | ✅ Done |
+| 1.6 | dotenv scope clarification (comment in supabase.ts) | ✅ Done |
 
 ### Pre-Sprint — Platform MVP (2026-03-13)
 
@@ -42,9 +62,9 @@ Active sprint: Sprint 1 — Fix What's Broken
 
 | Sprint | Theme | Status |
 |--------|-------|--------|
-| Sprint 1 | Fix What's Broken | 🟡 Active |
-| Sprint 2 | Admin & Visibility | 🔲 Queued |
-| Sprint 3 | Episode Memory | 🔲 Queued |
+| Sprint 1 | Fix What's Broken | ✅ Done |
+| Sprint 2 | Admin & Visibility | ✅ Done |
+| Sprint 3 | Episode Memory | 🟡 Active |
 | Sprint 4 | Orchestrator + Workers | 🔲 Queued |
 | Sprint 5 | Trust & Reputation | 🔲 Queued |
 | Sprint 6 | Monetisation | 🔲 Queued |
@@ -114,14 +134,7 @@ Active sprint: Sprint 1 — Fix What's Broken
 
 ## Known Production Issues (as of 2026-03-15)
 
-| Issue | Severity | Sprint |
-|-------|----------|--------|
-| In-memory rate limiter resets per Vercel cold start | S2 | Sprint 1 |
-| `expires_at` on conversations is set but never enforced | S2 | Sprint 1 |
-| Message retry can re-trigger escrow side effects | S1 | Sprint 1 |
-| Disputed conversations require Supabase console to resolve | S2 | Sprint 1 |
-| dotenv called in API route context unnecessarily | S2 | Sprint 1 |
-| No audit trail of financial operations | S3 | Sprint 2 |
+All Sprint 1 and Sprint 2 issues resolved. No known P0/P1 issues outstanding.
 
 ---
 
