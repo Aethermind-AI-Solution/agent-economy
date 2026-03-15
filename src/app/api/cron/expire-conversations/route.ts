@@ -73,9 +73,12 @@ export async function GET(req: NextRequest) {
   const safeCount = expiredSafe?.length ?? 0;
   const acceptedCount = expiredAccepted?.length ?? 0;
 
-  console.log(
-    `[cron] expired ${safeCount} safe + ${acceptedCount} accepted conversations`
-  );
+  console.log(JSON.stringify({
+    event: "cron_expire",
+    expired_safe: safeCount,
+    expired_accepted: acceptedCount,
+    ran_at: now,
+  }));
 
   return NextResponse.json({
     expired_safe: safeCount,

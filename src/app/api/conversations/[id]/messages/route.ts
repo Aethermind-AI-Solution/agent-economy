@@ -196,17 +196,38 @@ export async function POST(
     },
   };
 
-  // 7. Store in idempotency cache so retries get the same response
-  if (idempotencyKey) {
-    const cacheKey = `${conversationId}:${message_type}:${idempotencyKey}`;
-    // Fire-and-forget — don't block the response on cache write
-    supabase
-      .from("idempotency_cache")
-      .insert({ key: cacheKey, response: responseBody })
-      .then(({ error }) => {
-        if (error) console.error("[idempotency] cache write failed:", error.message);
-      });
-  }
+  // 7. Fire-and-forget: audit log + idempotency cache (never block response)
+  Promise.all([
+    // Audit log
+    supabase.from("conversation_events").insert({
+      conversation_id: conversationId,
+      from_status: conv.status,
+      to_status: transition.newStatus,
+      actor_id: agent!.id,
+      actor_role: senderRole,
+      message_type,
+      side_effect: transition.sideEffect ?? null,
+    }),
+    // Idempotency cache
+    idempotencyKey
+      ? supabase.from("idempotency_cache").insert({
+          key: `${conversationId}:${message_type}:${idempotencyKey}`,
+          response: responseBody,
+        })
+      : Promise.resolve(),
+  ]).catch((err) =>
+    console.error(JSON.stringify({ event: "post_transition_error", conversationId, error: err?.message }))
+  );
+
+  console.log(JSON.stringify({
+    event: "state_transition",
+    conversationId,
+    from: conv.status,
+    to: transition.newStatus,
+    message_type,
+    actor: agent!.id,
+    side_effect: transition.sideEffect ?? null,
+  }));
 
   return NextResponse.json(responseBody);
 }

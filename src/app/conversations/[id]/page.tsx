@@ -186,9 +186,10 @@ export default async function ConversationDetail({
 }) {
   const { id } = await params;
 
-  const [{ data: conv }, { data: agents }] = await Promise.all([
+  const [{ data: conv }, { data: agents }, { data: events }] = await Promise.all([
     supabase.from("conversations").select("*").eq("id", id).single(),
     supabase.from("agents").select("id, name, type"),
+    supabase.from("conversation_events").select("*").eq("conversation_id", id).order("created_at", { ascending: true }),
   ]);
 
   if (!conv) notFound();
@@ -254,6 +255,73 @@ export default async function ConversationDetail({
               </div>
             ))}
           </div>
+
+          {/* State Timeline */}
+          {events && events.length > 0 && (
+            <div style={{ marginBottom: 32 }}>
+              <div style={sectionLabel}>State Timeline</div>
+              <div style={{ position: "relative", paddingLeft: 24 }}>
+                {/* Vertical line */}
+                <div style={{
+                  position: "absolute", left: 7, top: 8, bottom: 8,
+                  width: 2, background: "#2a2a3a",
+                }} />
+                {events.map((ev: any, i: number) => {
+                  const toColor = statusColor(ev.to_status);
+                  const actor = agentMap[ev.actor_id];
+                  return (
+                    <div key={ev.id} style={{ position: "relative", marginBottom: i < events.length - 1 ? 20 : 0 }}>
+                      {/* Dot */}
+                      <div style={{
+                        position: "absolute", left: -20, top: 4,
+                        width: 10, height: 10, borderRadius: "50%",
+                        background: toColor, border: "2px solid #0a0a0f",
+                      }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        {ev.from_status && (
+                          <>
+                            <span style={{
+                              fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                              padding: "2px 8px", borderRadius: 3,
+                              background: statusColor(ev.from_status) + "22",
+                              color: statusColor(ev.from_status),
+                            }}>{ev.from_status}</span>
+                            <span style={{ color: "#8888a0", fontSize: 12 }}>→</span>
+                          </>
+                        )}
+                        <span style={{
+                          fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                          padding: "2px 8px", borderRadius: 3,
+                          background: toColor + "22", color: toColor, fontWeight: 600,
+                        }}>{ev.to_status}</span>
+                        {ev.message_type && (
+                          <span style={{
+                            fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                            color: "#8888a0", padding: "2px 8px",
+                            background: "#1a1a26", borderRadius: 3,
+                          }}>via {ev.message_type}</span>
+                        )}
+                        {ev.side_effect && (
+                          <span style={{
+                            fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                            color: "#ca8a04", padding: "2px 8px",
+                            background: "#ca8a0422", borderRadius: 3,
+                          }}>{ev.side_effect}</span>
+                        )}
+                        <span style={{ fontSize: 11, color: "#8888a0" }}>
+                          by {actor?.name ?? ev.actor_id?.slice(0, 8) ?? "system"}
+                          {ev.actor_role ? ` (${ev.actor_role})` : ""}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#555570", marginLeft: "auto" }}>
+                          {new Date(ev.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Smart payload sections */}
           <RfqSection rfq={conv.rfq_payload} />

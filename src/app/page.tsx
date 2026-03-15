@@ -10,16 +10,47 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-async function getData() {
-  const [agents, conversations, reviews] = await Promise.all([
+async function getData(opts: {
+  statusFilter?: string;
+  sortBy?: string;
+  sortDir?: string;
+  page?: number;
+}) {
+  const PAGE_SIZE = 25;
+  const page = Math.max(1, opts.page ?? 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  const sortCol = ["created_at", "escrow_amount", "updated_at"].includes(opts.sortBy ?? "")
+    ? opts.sortBy!
+    : "created_at";
+  const ascending = opts.sortDir === "asc";
+
+  let convQuery = supabase
+    .from("conversations")
+    .select("*", { count: "exact" })
+    .order(sortCol, { ascending })
+    .range(from, to);
+
+  if (opts.statusFilter && opts.statusFilter !== "all") {
+    convQuery = convQuery.eq("status", opts.statusFilter);
+  }
+
+  const [agents, convResult, reviews, revenueResult] = await Promise.all([
     supabase.from("agents").select("*").order("created_at", { ascending: false }),
-    supabase.from("conversations").select("*").order("created_at", { ascending: false }),
+    convQuery,
     supabase.from("reviews").select("*"),
+    supabase.from("platform_revenue").select("fee_amount, created_at"),
   ]);
+
   return {
     agents: agents.data ?? [],
-    conversations: conversations.data ?? [],
+    conversations: convResult.data ?? [],
+    totalConversations: convResult.count ?? 0,
     reviews: reviews.data ?? [],
+    revenue: revenueResult.data ?? [],
+    page,
+    pageSize: PAGE_SIZE,
   };
 }
 
@@ -40,12 +71,11 @@ function statusColor(status: string) {
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ key?: string }>;
+  searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string }>;
 }) {
-  const { key } = await searchParams;
+  const { key, status, sort, dir, page } = await searchParams;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
-  // If ADMIN_PASSWORD is set, require ?key=<password> to access dashboard
   if (adminPassword && key !== adminPassword) {
     return (
       <html lang="en">
@@ -60,11 +90,26 @@ export default async function Dashboard({
     );
   }
 
-  const { agents, conversations, reviews } = await getData();
+  const currentPage = parseInt(page ?? "1", 10);
+  const { agents, conversations, totalConversations, reviews, revenue, pageSize } = await getData({
+    statusFilter: status,
+    sortBy: sort,
+    sortDir: dir,
+    page: currentPage,
+  });
+
+  const totalPages = Math.ceil(totalConversations / pageSize);
+
+  // Stats computed from current page + revenue table for accurate totals
+  const totalFees = revenue.reduce((sum: number, r: any) => sum + Number(r.fee_amount), 0);
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const mrr = revenue
+    .filter((r: any) => new Date(r.created_at) >= startOfMonth)
+    .reduce((sum: number, r: any) => sum + Number(r.fee_amount), 0);
 
   const completedTx = conversations.filter((c: any) => c.status === "completed");
   const totalEscrow = completedTx.reduce((sum: number, c: any) => sum + (Number(c.escrow_amount) || 0), 0);
-  const totalFees = completedTx.reduce((sum: number, c: any) => sum + (Number(c.platform_fee) || 0), 0);
   const activeTx = conversations.filter((c: any) =>
     ["rfq_sent", "offer_sent", "accepted", "delivered"].includes(c.status)
   );
@@ -73,6 +118,27 @@ export default async function Dashboard({
       c.status === "disputed" ||
       (c.status === "expired" && c.escrow_frozen && Number(c.escrow_amount) > 0)
   );
+
+  // Build URL helper for sort/filter links
+  const buildUrl = (params: Record<string, string | undefined>) => {
+    const base: Record<string, string> = { key: key ?? "" };
+    if (status) base.status = status;
+    if (sort) base.sort = sort;
+    if (dir) base.dir = dir;
+    Object.assign(base, params);
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(base).filter(([, v]) => v))
+    ).toString();
+    return `/?${qs}`;
+  };
+
+  const sortLink = (col: string) => {
+    const newDir = sort === col && dir === "asc" ? "desc" : "asc";
+    return buildUrl({ sort: col, dir: newDir, page: "1" });
+  };
+
+  const sortArrow = (col: string) =>
+    sort === col ? (dir === "asc" ? " ↑" : " ↓") : "";
 
   return (
     <html lang="en">
@@ -278,11 +344,11 @@ export default async function Dashboard({
               <div className="stat-value accent">{agents.length}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Completed Transactions</div>
-              <div className="stat-value green">{completedTx.length}</div>
+              <div className="stat-label">Total Transactions</div>
+              <div className="stat-value green">{totalConversations}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Active Transactions</div>
+              <div className="stat-label">Active</div>
               <div className="stat-value orange">{activeTx.length}</div>
             </div>
             <div className="stat">
@@ -290,12 +356,12 @@ export default async function Dashboard({
               <div className="stat-value red">{disputedTx.length}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Total Volume</div>
-              <div className="stat-value green">${totalEscrow.toFixed(2)}</div>
+              <div className="stat-label">Total Fees Earned</div>
+              <div className="stat-value green">${totalFees.toFixed(2)}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Platform Fees</div>
-              <div className="stat-value green">${totalFees.toFixed(2)}</div>
+              <div className="stat-label">Fees This Month</div>
+              <div className="stat-value accent">${mrr.toFixed(2)}</div>
             </div>
           </div>
 
@@ -348,7 +414,28 @@ export default async function Dashboard({
 
           {/* Conversations */}
           <div className="section">
-            <div className="section-title">Conversations / Transactions</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid #2a2a3a" }}>
+              <div className="section-title" style={{ margin: 0, border: 0, padding: 0 }}>
+                Conversations / Transactions
+                <span style={{ fontSize: 12, color: "#8888a0", marginLeft: 8 }}>({totalConversations} total)</span>
+              </div>
+              {/* Status filter */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {["all", "rfq_sent", "offer_sent", "accepted", "delivered", "completed", "disputed", "rejected", "expired"].map((s) => (
+                  <a
+                    key={s}
+                    href={buildUrl({ status: s === "all" ? undefined : s, page: "1" })}
+                    style={{
+                      fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                      padding: "3px 10px", borderRadius: 4, textDecoration: "none",
+                      background: (status ?? "all") === s ? "#3b82f6" : "#1a1a26",
+                      color: (status ?? "all") === s ? "white" : "#8888a0",
+                      border: "1px solid #2a2a3a",
+                    }}
+                  >{s}</a>
+                ))}
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -358,9 +445,17 @@ export default async function Dashboard({
                   <th>Buyer</th>
                   <th>Vendor</th>
                   <th>Status</th>
-                  <th>Escrow</th>
+                  <th>
+                    <a href={sortLink("escrow_amount")} style={{ color: "inherit", textDecoration: "none" }}>
+                      Escrow{sortArrow("escrow_amount")}
+                    </a>
+                  </th>
                   <th>Fee</th>
-                  <th>Created</th>
+                  <th>
+                    <a href={sortLink("created_at")} style={{ color: "inherit", textDecoration: "none" }}>
+                      Created{sortArrow("created_at")}
+                    </a>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -407,6 +502,29 @@ export default async function Dashboard({
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+                <span style={{ fontSize: 12, color: "#8888a0", fontFamily: "JetBrains Mono, monospace" }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                {currentPage > 1 && (
+                  <a href={buildUrl({ page: String(currentPage - 1) })} style={{
+                    fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                    padding: "4px 12px", borderRadius: 4, textDecoration: "none",
+                    background: "#1a1a26", color: "#e4e4ef", border: "1px solid #2a2a3a",
+                  }}>← Prev</a>
+                )}
+                {currentPage < totalPages && (
+                  <a href={buildUrl({ page: String(currentPage + 1) })} style={{
+                    fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                    padding: "4px 12px", borderRadius: 4, textDecoration: "none",
+                    background: "#1a1a26", color: "#e4e4ef", border: "1px solid #2a2a3a",
+                  }}>Next →</a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Disputes */}
