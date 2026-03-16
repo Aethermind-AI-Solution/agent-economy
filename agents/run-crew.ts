@@ -143,8 +143,8 @@ async function main() {
   log(`Query: "${query}"`);
   log("=".repeat(50));
 
-  // Create a persistent run record
-  const runId = await createCrewRun(query);
+  // Use an existing run record (passed by the API trigger) or create a new one
+  const runId = process.env.RUN_ID || await createCrewRun(query);
   if (runId) log(`Run ID: ${runId}`);
 
   try {

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { spawn } from "child_process";
+import path from "path";
 import { authenticate } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
-import { listCrewRuns } from "@/lib/crew-runs";
+import { listCrewRuns, createCrewRun } from "@/lib/crew-runs";
 
 /**
  * GET /api/crew-runs
@@ -20,4 +22,63 @@ export async function GET(req: NextRequest) {
 
   const runs = await listCrewRuns(limit);
   return NextResponse.json({ runs });
+}
+
+/**
+ * POST /api/crew-runs
+ * Trigger a new crew run. Admin-password auth via form field or JSON body.
+ *
+ * NOTE: The crew takes ~4 minutes. This handler creates the run record and
+ * spawns run-crew.ts as a detached background process, then redirects immediately.
+ * On Vercel free tier (60s function timeout) the background process is killed —
+ * use `npm run crew "<query>"` from the terminal for reliable execution.
+ * On Vercel Pro, add `export const maxDuration = 300;` to this file.
+ */
+export async function POST(req: NextRequest) {
+  let key: string | null = null;
+  let query: string | null = null;
+
+  const ct = req.headers.get("content-type") ?? "";
+  if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
+    const form = await req.formData();
+    key = form.get("key") as string | null;
+    query = form.get("query") as string | null;
+  } else {
+    const body = await req.json().catch(() => ({}));
+    key = body.key ?? null;
+    query = body.query ?? null;
+  }
+
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminPassword && key !== adminPassword) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!query || query.trim().length < 10) {
+    return NextResponse.json({ error: "query must be at least 10 characters" }, { status: 400 });
+  }
+
+  // Pre-create the run record so it appears in the dashboard immediately.
+  const runId = await createCrewRun(query.trim());
+
+  // Spawn run-crew.ts as a detached background process.
+  const cwd = process.cwd();
+  const tsxBin = path.join(cwd, "node_modules", ".bin", "tsx");
+  const scriptPath = path.join(cwd, "agents", "run-crew.ts");
+
+  try {
+    const child = spawn(tsxBin, [scriptPath, query.trim()], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, RUN_ID: runId },
+      cwd,
+    });
+    child.unref();
+  } catch {
+    // Spawn failed — run is still recorded, user can trigger via CLI
+  }
+
+  // Redirect back to dashboard
+  const keyParam = key ? `?key=${encodeURIComponent(key)}` : "";
+  return NextResponse.redirect(new URL(`/${keyParam}`, req.url));
 }

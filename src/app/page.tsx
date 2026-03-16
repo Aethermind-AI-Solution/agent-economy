@@ -36,12 +36,13 @@ async function getData(opts: {
     convQuery = convQuery.eq("status", opts.statusFilter);
   }
 
-  const [agents, convResult, reviews, revenueResult, crewRunsResult] = await Promise.all([
+  const [agents, convResult, reviews, revenueResult, crewRunsResult, draftsSentResult] = await Promise.all([
     supabase.from("agents").select("*").order("created_at", { ascending: false }),
     convQuery,
     supabase.from("reviews").select("*"),
     supabase.from("platform_revenue").select("fee_amount, created_at"),
     supabase.from("crew_runs").select("*").order("created_at", { ascending: false }).limit(10),
+    supabase.from("crew_run_drafts").select("id", { count: "exact", head: true }).not("contacted_at", "is", null),
   ]);
 
   const { data: episodeCounts } = await supabase
@@ -74,6 +75,7 @@ async function getData(opts: {
     reviews: reviews.data ?? [],
     revenue: revenueResult.data ?? [],
     crewRuns: crewRunsResult.data ?? [],
+    draftsSent: draftsSentResult.count ?? 0,
     page,
     pageSize: PAGE_SIZE,
   };
@@ -200,7 +202,7 @@ export default async function Dashboard({
   }
 
   const currentPage = parseInt(page ?? "1", 10);
-  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, pageSize } = await getData({
+  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, draftsSent, pageSize } = await getData({
     statusFilter: status,
     sortBy: sort,
     sortDir: dir,
@@ -311,7 +313,7 @@ export default async function Dashboard({
           .main { padding: 32px 40px; max-width: 1400px; }
           .stats {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(7, 1fr);
             gap: 16px;
             margin-bottom: 40px;
           }
@@ -472,6 +474,10 @@ export default async function Dashboard({
               <div className="stat-label">Fees This Month</div>
               <div className="stat-value accent">${mrr.toFixed(2)}</div>
             </div>
+            <div className="stat">
+              <div className="stat-label">Drafts Sent</div>
+              <div className="stat-value" style={{ color: "#8b5cf6" }}>{draftsSent}</div>
+            </div>
           </div>
 
           {/* Analytics Chart */}
@@ -542,10 +548,35 @@ export default async function Dashboard({
           </div>
 
           {/* Crew Runs */}
-          {crewRuns.length > 0 && (
-            <div className="section">
-              <div className="section-title">Crew Runs</div>
-              <table>
+          <div className="section">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid #2a2a3a" }}>
+              <div className="section-title" style={{ margin: 0, border: 0, padding: 0 }}>Crew Runs</div>
+              <form action="/api/crew-runs" method="POST" style={{ display: "flex", gap: 8 }}>
+                <input type="hidden" name="key" value={key ?? ""} />
+                <input
+                  type="text"
+                  name="query"
+                  placeholder="e.g. healthcare companies in India that need AI automation"
+                  style={{
+                    width: 380, padding: "6px 12px", borderRadius: 6,
+                    border: "1px solid #2a2a3a", background: "#12121a",
+                    color: "#e4e4ef", fontSize: 13, fontFamily: "DM Sans, sans-serif",
+                  }}
+                />
+                <button type="submit" style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 12,
+                  fontFamily: "JetBrains Mono, monospace", fontWeight: 600,
+                  background: "#8b5cf6", color: "white", border: "none", cursor: "pointer",
+                  textTransform: "uppercase", letterSpacing: "0.5px",
+                }}>
+                  + New Run
+                </button>
+              </form>
+            </div>
+            {crewRuns.length === 0 ? (
+              <div style={{ color: "#8888a0", fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>No crew runs yet.</div>
+            ) : (
+            <table>
                 <thead>
                   <tr>
                     <th>Run ID</th>
@@ -571,7 +602,14 @@ export default async function Dashboard({
                       r.status === "running" ? "#ea580c" : "#dc2626";
                     return (
                       <tr key={r.id}>
-                        <td className="uuid">{r.id.slice(0, 8)}…</td>
+                        <td>
+                          <a
+                            className="conv-link"
+                            href={`/crew-runs/${r.id}${key ? `?key=${key}` : ""}`}
+                          >
+                            {r.id.slice(0, 8)}…
+                          </a>
+                        </td>
                         <td style={{ color: "#8888a0", fontSize: 12, maxWidth: 240 }}>
                           {String(r.query).slice(0, 50)}{r.query.length > 50 ? "…" : ""}
                         </td>
@@ -599,8 +637,8 @@ export default async function Dashboard({
                   })}
                 </tbody>
               </table>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Conversations */}
           <div className="section">

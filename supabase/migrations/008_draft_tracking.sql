@@ -1,0 +1,1 @@
+ALTER TABLE crew_run_drafts ADD COLUMN IF NOT EXISTS contacted_at TIMESTAMPTZ;

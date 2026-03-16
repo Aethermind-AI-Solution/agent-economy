@@ -31,6 +31,7 @@ export interface CrewDraft {
   subject_line: string | null;
   email_body: string | null;
   linkedin_message: string | null;
+  contacted_at: string | null;
   created_at: string;
 }
 
@@ -118,6 +119,19 @@ export async function listCrewRuns(limit = 20): Promise<CrewRun[]> {
     return [];
   }
   return (data ?? []) as CrewRun[];
+}
+
+export async function setDraftContacted(
+  draftId: string,
+  contacted: boolean
+): Promise<void> {
+  const { error } = await getSupabase()
+    .from("crew_run_drafts")
+    .update({ contacted_at: contacted ? new Date().toISOString() : null })
+    .eq("id", draftId);
+  if (error) {
+    console.error(JSON.stringify({ event: "set_draft_contacted_error", draft_id: draftId, error: error.message }));
+  }
 }
 
 export async function getCrewRun(
