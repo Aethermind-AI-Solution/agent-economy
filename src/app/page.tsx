@@ -36,13 +36,14 @@ async function getData(opts: {
     convQuery = convQuery.eq("status", opts.statusFilter);
   }
 
-  const [agents, convResult, reviews, revenueResult, crewRunsResult, draftsSentResult] = await Promise.all([
+  const [agents, convResult, reviews, revenueResult, crewRunsResult, draftsSentResult, pipelineActiveResult] = await Promise.all([
     supabase.from("agents").select("*").order("created_at", { ascending: false }),
     convQuery,
     supabase.from("reviews").select("*"),
     supabase.from("platform_revenue").select("fee_amount, created_at"),
     supabase.from("crew_runs").select("*").order("created_at", { ascending: false }).limit(10),
     supabase.from("crew_run_drafts").select("id", { count: "exact", head: true }).not("contacted_at", "is", null),
+    supabase.from("crew_run_drafts").select("id", { count: "exact", head: true }).in("pipeline_status", ["contacted", "replied", "interested"]),
   ]);
 
   const { data: episodeCounts } = await supabase
@@ -76,6 +77,7 @@ async function getData(opts: {
     revenue: revenueResult.data ?? [],
     crewRuns: crewRunsResult.data ?? [],
     draftsSent: draftsSentResult.count ?? 0,
+    pipelineActive: pipelineActiveResult.count ?? 0,
     page,
     pageSize: PAGE_SIZE,
   };
@@ -202,7 +204,7 @@ export default async function Dashboard({
   }
 
   const currentPage = parseInt(page ?? "1", 10);
-  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, draftsSent, pageSize } = await getData({
+  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, draftsSent, pipelineActive, pageSize } = await getData({
     statusFilter: status,
     sortBy: sort,
     sortDir: dir,
@@ -313,7 +315,7 @@ export default async function Dashboard({
           .main { padding: 32px 40px; max-width: 1400px; }
           .stats {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(8, 1fr);
             gap: 16px;
             margin-bottom: 40px;
           }
@@ -440,6 +442,10 @@ export default async function Dashboard({
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span id="last-refreshed" style={{ fontSize: 12, color: "#8888a0", fontFamily: "JetBrains Mono, monospace" }}></span>
             <a
+              href={key ? `/pipeline?key=${key}` : "/pipeline"}
+              style={{ background: "#1a1a26", border: "1px solid #8b5cf6", color: "#8b5cf6", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "JetBrains Mono, monospace", textDecoration: "none", fontWeight: 600 }}
+            >Pipeline →</a>
+            <a
               href={key ? `/?key=${key}` : "/"}
               style={{ background: "#1a1a26", border: "1px solid #2a2a3a", color: "#e4e4ef", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "DM Sans, sans-serif", textDecoration: "none" }}
             >↻ Refresh</a>
@@ -478,6 +484,12 @@ export default async function Dashboard({
               <div className="stat-label">Drafts Sent</div>
               <div className="stat-value" style={{ color: "#8b5cf6" }}>{draftsSent}</div>
             </div>
+            <a href={key ? `/pipeline?key=${key}` : "/pipeline"} style={{ textDecoration: "none" }}>
+              <div className="stat" style={{ borderColor: "#8b5cf640", cursor: "pointer" }}>
+                <div className="stat-label" style={{ color: "#8b5cf6" }}>Pipeline Active</div>
+                <div className="stat-value" style={{ color: "#8b5cf6" }}>{pipelineActive}</div>
+              </div>
+            </a>
           </div>
 
           {/* Analytics Chart */}

@@ -21,6 +21,8 @@ export interface CrewRun {
   created_at: string;
 }
 
+export type PipelineStatus = "new" | "contacted" | "replied" | "interested" | "closed" | "skipped";
+
 export interface CrewDraft {
   id: string;
   crew_run_id: string;
@@ -32,6 +34,9 @@ export interface CrewDraft {
   email_body: string | null;
   linkedin_message: string | null;
   contacted_at: string | null;
+  pipeline_status: PipelineStatus;
+  notes: string | null;
+  follow_up_date: string | null;
   created_at: string;
 }
 
@@ -119,6 +124,54 @@ export async function listCrewRuns(limit = 20): Promise<CrewRun[]> {
     return [];
   }
   return (data ?? []) as CrewRun[];
+}
+
+export async function updateDraftPipeline(
+  draftId: string,
+  fields: {
+    pipeline_status?: PipelineStatus;
+    notes?: string;
+    follow_up_date?: string | null;
+  }
+): Promise<void> {
+  const update: Record<string, unknown> = { ...fields };
+  // Auto-set contacted_at when first moving out of 'new'
+  if (fields.pipeline_status && fields.pipeline_status !== "new" && fields.pipeline_status !== "skipped") {
+    // Only set if not already set — use upsert logic via conditional
+    update.contacted_at = new Date().toISOString();
+  }
+  const { error } = await getSupabase()
+    .from("crew_run_drafts")
+    .update(update)
+    .eq("id", draftId);
+  if (error) {
+    console.error(JSON.stringify({ event: "update_draft_pipeline_error", draft_id: draftId, error: error.message }));
+  }
+}
+
+export async function listAllDrafts(
+  pipelineStatus?: PipelineStatus | "all",
+  limit = 200
+): Promise<(CrewDraft & { crew_run_query: string })[]> {
+  let q = getSupabase()
+    .from("crew_run_drafts")
+    .select("*, crew_runs(query)")
+    .order("score", { ascending: false })
+    .limit(limit);
+
+  if (pipelineStatus && pipelineStatus !== "all") {
+    q = q.eq("pipeline_status", pipelineStatus);
+  }
+
+  const { data, error } = await q;
+  if (error) {
+    console.error(JSON.stringify({ event: "list_all_drafts_error", error: error.message }));
+    return [];
+  }
+  return (data ?? []).map((d: any) => ({
+    ...d,
+    crew_run_query: d.crew_runs?.query ?? "",
+  }));
 }
 
 export async function setDraftContacted(
