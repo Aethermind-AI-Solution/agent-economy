@@ -27,6 +27,7 @@ import { AgentSDK } from "../src/lib/sdk";
 import { registerResearchAgent, findCompaniesParallel } from "./research-agent";
 import { registerDataAgent, enrichAndScore } from "./data-agent";
 import { registerSalesAgent, draftOutreach } from "./sales-agent";
+import { createCrewRun, completeCrewRun, failCrewRun, saveDrafts } from "../src/lib/crew-runs";
 
 const CREW_NAME = "RunCrew";
 
@@ -142,100 +143,122 @@ async function main() {
   log(`Query: "${query}"`);
   log("=".repeat(50));
 
-  // ── Register all 3 agents ──────────────────────────────────────────────────
-  log("\nRegistering agents...");
-  const [research, data, sales] = await Promise.all([
-    registerResearchAgent(platformUrl),
-    registerDataAgent(platformUrl),
-    registerSalesAgent(platformUrl),
-  ]);
-  log(`ResearchAgent: ${research.agentId}`);
-  log(`DataAgent:     ${data.agentId}`);
-  log(`SalesAgent:    ${sales.agentId}`);
+  // Create a persistent run record
+  const runId = await createCrewRun(query);
+  if (runId) log(`Run ID: ${runId}`);
 
-  // ── Step 1: Research ───────────────────────────────────────────────────────
-  log("\n" + "=".repeat(50));
-  log("Step 1: Research");
-  log("=".repeat(50));
-  const companies = await findCompaniesParallel(query, anthropic, research.sdk, research.agentId);
-  log(`Found ${companies.length} companies`);
+  try {
+    // ── Register all 3 agents ──────────────────────────────────────────────────
+    log("\nRegistering agents...");
+    const [research, data, sales] = await Promise.all([
+      registerResearchAgent(platformUrl),
+      registerDataAgent(platformUrl),
+      registerSalesAgent(platformUrl),
+    ]);
+    log(`ResearchAgent: ${research.agentId}`);
+    log(`DataAgent:     ${data.agentId}`);
+    log(`SalesAgent:    ${sales.agentId}`);
 
-  // ── Handoff 1: ResearchAgent → DataAgent ──────────────────────────────────
-  log("\n" + "=".repeat(50));
-  log("Step 2: Enrichment (via platform)");
-  log("=".repeat(50));
+    // ── Step 1: Research ───────────────────────────────────────────────────────
+    log("\n" + "=".repeat(50));
+    log("Step 1: Research");
+    log("=".repeat(50));
+    const companies = await findCompaniesParallel(query, anthropic, research.sdk, research.agentId);
+    log(`Found ${companies.length} companies`);
 
-  let scoredLeads: any[];
-  await platformHandoff({
-    label: "ResearchAgent → DataAgent",
-    buyerSdk: research.sdk,
-    vendorSdk: data.sdk,
-    vendorAgentId: data.agentId,
-    serviceType: "lead_enrichment",
-    rfqPayload: { query, companies },
-    work: async () => {
-      scoredLeads = await enrichAndScore(companies, anthropic, data.sdk);
-      return {
-        artifacts: [{ type: "scored_leads", data: scoredLeads }],
-      };
-    },
-  });
+    // ── Handoff 1: ResearchAgent → DataAgent ──────────────────────────────────
+    log("\n" + "=".repeat(50));
+    log("Step 2: Enrichment (via platform)");
+    log("=".repeat(50));
 
-  log(`Top ${scoredLeads!.length} leads scored:`);
-  for (const lead of scoredLeads!.slice(0, 5)) {
-    log(`  [${lead.score}/10] ${lead.company_name} — ${lead.industry}`);
+    let scoredLeads: any[];
+    await platformHandoff({
+      label: "ResearchAgent → DataAgent",
+      buyerSdk: research.sdk,
+      vendorSdk: data.sdk,
+      vendorAgentId: data.agentId,
+      serviceType: "lead_enrichment",
+      rfqPayload: { query, companies },
+      work: async () => {
+        scoredLeads = await enrichAndScore(companies, anthropic, data.sdk);
+        return {
+          artifacts: [{ type: "scored_leads", data: scoredLeads }],
+        };
+      },
+    });
+
+    log(`Top ${scoredLeads!.length} leads scored:`);
+    for (const lead of scoredLeads!.slice(0, 5)) {
+      log(`  [${lead.score}/10] ${lead.company_name} — ${lead.industry}`);
+    }
+    if (scoredLeads!.length > 5) {
+      log(`  ... and ${scoredLeads!.length - 5} more`);
+    }
+
+    // ── Handoff 2: DataAgent → SalesAgent ─────────────────────────────────────
+    log("\n" + "=".repeat(50));
+    log("Step 3: Outreach Drafting (via platform)");
+    log("=".repeat(50));
+
+    let outreachDrafts: any[];
+    await platformHandoff({
+      label: "DataAgent → SalesAgent",
+      buyerSdk: data.sdk,
+      vendorSdk: sales.sdk,
+      vendorAgentId: sales.agentId,
+      serviceType: "outreach_drafting",
+      rfqPayload: { scoredLeads: scoredLeads! },
+      work: async () => {
+        outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk);
+        return {
+          artifacts: [{ type: "outreach_drafts", data: outreachDrafts }],
+        };
+      },
+    });
+
+    // ── Persist results ────────────────────────────────────────────────────────
+    if (runId) {
+      await Promise.all([
+        completeCrewRun(runId, {
+          company_count: companies.length,
+          lead_count: scoredLeads!.length,
+          draft_count: outreachDrafts!.length,
+        }),
+        saveDrafts(runId, outreachDrafts!),
+      ]);
+      log(`Run saved: ${runId}`);
+    }
+
+    // ── Print Results ──────────────────────────────────────────────────────────
+    log("\n" + "=".repeat(50));
+    log(`OUTREACH DRAFTS (${outreachDrafts!.length} leads)`);
+    log("=".repeat(50));
+
+    for (let i = 0; i < outreachDrafts!.length; i++) {
+      const draft = outreachDrafts![i];
+      console.log(`\n${"─".repeat(60)}`);
+      console.log(`#${i + 1}  ${draft.company_name}  [Score: ${draft.score}/10]`);
+      console.log(`    Decision Maker: ${draft.decision_maker}`);
+      console.log(`\n  EMAIL`);
+      console.log(`  Subject: ${draft.subject_line}`);
+      console.log(`\n${draft.email_body
+        .split("\n")
+        .map((l: string) => `  ${l}`)
+        .join("\n")}`);
+      console.log(`\n  LINKEDIN`);
+      console.log(`\n${draft.linkedin_message
+        .split("\n")
+        .map((l: string) => `  ${l}`)
+        .join("\n")}`);
+    }
+
+    console.log(`\n${"=".repeat(60)}`);
+    log("Crew run complete.");
+    log(`Review the ${outreachDrafts!.length} drafts above, edit as needed, then send manually.`);
+  } catch (err: any) {
+    if (runId) await failCrewRun(runId, err.message);
+    throw err;
   }
-  if (scoredLeads!.length > 5) {
-    log(`  ... and ${scoredLeads!.length - 5} more`);
-  }
-
-  // ── Handoff 2: DataAgent → SalesAgent ─────────────────────────────────────
-  log("\n" + "=".repeat(50));
-  log("Step 3: Outreach Drafting (via platform)");
-  log("=".repeat(50));
-
-  let outreachDrafts: any[];
-  await platformHandoff({
-    label: "DataAgent → SalesAgent",
-    buyerSdk: data.sdk,
-    vendorSdk: sales.sdk,
-    vendorAgentId: sales.agentId,
-    serviceType: "outreach_drafting",
-    rfqPayload: { scoredLeads: scoredLeads! },
-    work: async () => {
-      outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk);
-      return {
-        artifacts: [{ type: "outreach_drafts", data: outreachDrafts }],
-      };
-    },
-  });
-
-  // ── Print Results ──────────────────────────────────────────────────────────
-  log("\n" + "=".repeat(50));
-  log(`OUTREACH DRAFTS (${outreachDrafts!.length} leads)`);
-  log("=".repeat(50));
-
-  for (let i = 0; i < outreachDrafts!.length; i++) {
-    const draft = outreachDrafts![i];
-    console.log(`\n${"─".repeat(60)}`);
-    console.log(`#${i + 1}  ${draft.company_name}  [Score: ${draft.score}/10]`);
-    console.log(`    Decision Maker: ${draft.decision_maker}`);
-    console.log(`\n  EMAIL`);
-    console.log(`  Subject: ${draft.subject_line}`);
-    console.log(`\n${draft.email_body
-      .split("\n")
-      .map((l: string) => `  ${l}`)
-      .join("\n")}`);
-    console.log(`\n  LINKEDIN`);
-    console.log(`\n${draft.linkedin_message
-      .split("\n")
-      .map((l: string) => `  ${l}`)
-      .join("\n")}`);
-  }
-
-  console.log(`\n${"=".repeat(60)}`);
-  log("Crew run complete.");
-  log(`Review the ${outreachDrafts!.length} drafts above, edit as needed, then send manually.`);
 }
 
 main().catch((err) => {

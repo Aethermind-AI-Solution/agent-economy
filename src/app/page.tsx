@@ -36,11 +36,12 @@ async function getData(opts: {
     convQuery = convQuery.eq("status", opts.statusFilter);
   }
 
-  const [agents, convResult, reviews, revenueResult] = await Promise.all([
+  const [agents, convResult, reviews, revenueResult, crewRunsResult] = await Promise.all([
     supabase.from("agents").select("*").order("created_at", { ascending: false }),
     convQuery,
     supabase.from("reviews").select("*"),
     supabase.from("platform_revenue").select("fee_amount, created_at"),
+    supabase.from("crew_runs").select("*").order("created_at", { ascending: false }).limit(10),
   ]);
 
   const { data: episodeCounts } = await supabase
@@ -72,6 +73,7 @@ async function getData(opts: {
     totalConversations: convResult.count ?? 0,
     reviews: reviews.data ?? [],
     revenue: revenueResult.data ?? [],
+    crewRuns: crewRunsResult.data ?? [],
     page,
     pageSize: PAGE_SIZE,
   };
@@ -198,7 +200,7 @@ export default async function Dashboard({
   }
 
   const currentPage = parseInt(page ?? "1", 10);
-  const { agents, conversations, totalConversations, reviews, revenue, pageSize } = await getData({
+  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, pageSize } = await getData({
     statusFilter: status,
     sortBy: sort,
     sortDir: dir,
@@ -538,6 +540,67 @@ export default async function Dashboard({
               </tbody>
             </table>
           </div>
+
+          {/* Crew Runs */}
+          {crewRuns.length > 0 && (
+            <div className="section">
+              <div className="section-title">Crew Runs</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Run ID</th>
+                    <th>Query</th>
+                    <th>Status</th>
+                    <th>Companies</th>
+                    <th>Leads</th>
+                    <th>Drafts</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crewRuns.map((r: any) => {
+                    const durationMs = r.completed_at
+                      ? new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()
+                      : null;
+                    const durationStr = durationMs !== null
+                      ? `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`
+                      : "—";
+                    const statusColor =
+                      r.status === "completed" ? "#059669" :
+                      r.status === "running" ? "#ea580c" : "#dc2626";
+                    return (
+                      <tr key={r.id}>
+                        <td className="uuid">{r.id.slice(0, 8)}…</td>
+                        <td style={{ color: "#8888a0", fontSize: 12, maxWidth: 240 }}>
+                          {String(r.query).slice(0, 50)}{r.query.length > 50 ? "…" : ""}
+                        </td>
+                        <td>
+                          <span
+                            className="status-pill"
+                            style={{ background: statusColor + "22", color: statusColor }}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="mono">{r.company_count ?? "—"}</td>
+                        <td className="mono">{r.lead_count ?? "—"}</td>
+                        <td className="mono" style={{ color: r.draft_count ? "#8b5cf6" : "#8888a0" }}>
+                          {r.draft_count ?? "—"}
+                        </td>
+                        <td className="mono" style={{ color: "#8888a0", fontSize: 12 }}>
+                          {new Date(r.started_at).toLocaleString()}
+                        </td>
+                        <td className="mono" style={{ color: "#8888a0", fontSize: 12 }}>
+                          {durationStr}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Conversations */}
           <div className="section">

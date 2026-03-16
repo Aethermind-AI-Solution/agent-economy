@@ -1,18 +1,34 @@
 // No dotenv here — Next.js dev server loads .env.local automatically.
 // Vercel injects env vars at runtime. Only CLI agent files (agents/*.ts) need dotenv.
+//
+// Lazy initialization: the client is created on first use, not at module load time.
+// This lets agent scripts import this module before dotenv.config() has run — the
+// error is deferred to when the client is actually called (by which time env vars
+// are always set).
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY");
+let _instance: SupabaseClient | null = null;
+
+function getInstance(): SupabaseClient {
+  if (!_instance) {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY");
+    }
+    _instance = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+  }
+  return _instance;
 }
 
-// Service role client — bypasses RLS for admin operations.
-// API routes set app.current_agent_id for RLS when needed.
-export const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+// Proxy gives the same API as a SupabaseClient but initializes lazily.
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getInstance(), prop, receiver);
+  },
+});
 
 /**
  * Run a callback within an RLS-scoped context.

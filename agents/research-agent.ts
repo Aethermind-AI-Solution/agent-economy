@@ -15,6 +15,7 @@ import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { AgentSDK, type Episode } from "../src/lib/sdk";
 import { createThread, startThread, completeThread, failThread } from "../src/lib/threads";
+import { webSearch, formatSearchResults } from "../src/lib/web-search";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,16 +76,32 @@ async function decompose(query: string, anthropic: Anthropic): Promise<string[]>
 }
 
 async function findSubQuery(subQuery: string, anthropic: Anthropic): Promise<Company[]> {
-  const response = await anthropic.messages.create({
-    model: "claude-opus-4-6",
-    max_tokens: 4096,
-    system: `You are a market research specialist with deep knowledge of the Indian business landscape.
-You identify real companies that would benefit from AI automation solutions.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
-    messages: [
-      {
-        role: "user",
-        content: `Find 8-12 Indian companies matching this criteria: "${subQuery}"
+  const searchResults = await webSearch(subQuery, 5);
+  const hasResults = searchResults.length > 0;
+  if (hasResults) {
+    log(`Sub-query web search: ${searchResults.length} results fetched`);
+  }
+
+  const userContent = hasResults
+    ? `Here are live web search results for: "${subQuery}"
+
+${formatSearchResults(searchResults)}
+
+Based on these search results AND your knowledge of Indian businesses, find 8-12 companies matching: "${subQuery}"
+
+Prioritize companies mentioned in the search results above.
+Focus on companies with clear automation opportunities: manual data entry, large workforces doing
+repetitive tasks, outdated processes, or stated interest in digital transformation.
+
+Return a JSON array where each element has exactly these fields:
+- company_name: string (real Indian company name)
+- industry: string (specific industry sector)
+- website: string (website URL from search results or likely URL)
+- why_they_need_ai: string (specific pain point or manual process this company faces)
+- source: string (e.g. "web search", "industry knowledge", "sector research")
+
+Return ONLY the JSON array, nothing else.`
+    : `Find 8-12 Indian companies matching this criteria: "${subQuery}"
 
 For each company, provide realistic details based on your knowledge of Indian businesses.
 Focus on companies with clear automation opportunities: manual data entry, large workforces doing
@@ -97,9 +114,15 @@ Return a JSON array where each element has exactly these fields:
 - why_they_need_ai: string (specific pain point or manual process this company faces)
 - source: string (e.g. "industry knowledge", "sector research", "public reports")
 
-Return ONLY the JSON array, nothing else.`,
-      },
-    ],
+Return ONLY the JSON array, nothing else.`;
+
+  const response = await anthropic.messages.create({
+    model: "claude-opus-4-6",
+    max_tokens: 4096,
+    system: `You are a market research specialist with deep knowledge of the Indian business landscape.
+You identify real companies that would benefit from AI automation solutions.
+Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+    messages: [{ role: "user", content: userContent }],
   });
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
