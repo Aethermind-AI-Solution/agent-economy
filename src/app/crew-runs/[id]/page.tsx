@@ -184,7 +184,6 @@ export default async function CrewRunDetail({
                         <select
                           name="pipeline_status"
                           defaultValue={stage}
-                          onChange={(e) => (e.target.form as HTMLFormElement)?.submit()}
                           style={{
                             padding: "5px 10px", borderRadius: 4, fontSize: 12,
                             fontFamily: "JetBrains Mono, monospace", cursor: "pointer",

@@ -6,6 +6,7 @@ import { createEscrow, releaseEscrow, freezeEscrow } from "@/lib/escrow";
 import { rateLimit } from "@/lib/rate-limit";
 import { SendMessageSchema } from "@/lib/validation";
 import { recordEpisode } from "@/lib/episodes";
+import { recomputeTrust } from "@/lib/trust";
 
 /**
  * POST /api/conversations/:id/messages
@@ -220,6 +221,15 @@ export async function POST(
     (transition.newStatus === "completed" || transition.newStatus === "disputed")
       ? recordEpisode(updated)
       : Promise.resolve(),
+    // Trust recompute — fires on terminal states only
+    (transition.newStatus === "completed" || transition.newStatus === "disputed")
+      ? Promise.all([
+          recomputeTrust(conv.buyer_id).catch(() => {}),
+          recomputeTrust(conv.vendor_id).catch(() => {}),
+        ])
+      : Promise.resolve(),
+    // Touch last_active_at for the sender
+    supabase.rpc("touch_agent_active", { p_agent_id: agent!.id }),
   ]).catch((err) =>
     console.error(JSON.stringify({ event: "post_transition_error", conversationId, error: err?.message }))
   );

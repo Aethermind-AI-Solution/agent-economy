@@ -48,6 +48,8 @@ export interface AgentProfile {
     capabilities: any[];
     reputation_score: number;
     total_transactions: number;
+    trust_score: number;
+    min_buyer_trust: number;
   };
   recent_transactions: any[];
 }
@@ -179,8 +181,25 @@ export class AgentSDK {
   // ── Threads (Orchestrator / Worker) ──
 
   async spawnWorker(taskType: string, taskInput: Record<string, unknown>): Promise<string> {
+    // Prime worker with relevant episode context from past runs of same task type
+    let enrichedInput = taskInput;
+    try {
+      const episodes = await this.getMyEpisodes(taskType, 3);
+      if (episodes.length > 0) {
+        enrichedInput = {
+          ...taskInput,
+          episodeContext: episodes.map((e) => ({
+            outcome: e.outcome,
+            summary: e.task_summary,
+            artifacts: e.artifacts_summary,
+          })),
+        };
+      }
+    } catch {
+      // Silently skip — episode context is optional
+    }
     const res = await this.request<{ thread_id: string }>("POST", "/api/threads", {
-      task_type: taskType, task_input: taskInput,
+      task_type: taskType, task_input: enrichedInput,
     });
     return res.thread_id;
   }

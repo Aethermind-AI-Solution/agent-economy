@@ -9,7 +9,11 @@
     "buyer": "tsx agents/procure-bot.ts",
     "vendor": "tsx agents/pixel-forge.ts",
     "demo": "concurrently \"npm run vendor\" \"sleep 3 && npm run buyer\"",
-    "crew": "tsx agents/run-crew.ts"
+    "crew": "tsx agents/run-crew.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -23,11 +27,14 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.0",
+    "@vitest/ui": "^4.1.0",
     "concurrently": "^8.2.0",
     "tsx": "^4.15.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.0"
   }
 }

@@ -4,6 +4,7 @@ import path from "path";
 import { authenticate } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { listCrewRuns, createCrewRun } from "@/lib/crew-runs";
+import { supabase as db } from "@/lib/supabase";
 
 /**
  * GET /api/crew-runs
@@ -19,6 +20,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const rawLimit = parseInt(searchParams.get("limit") ?? "20", 10);
   const limit = Math.min(50, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
+
+  // Mark stale "running" records as failed (process killed, e.g. Vercel 60s limit)
+  db.from("crew_runs")
+    .update({ status: "failed", error: "Timed out — process was killed" })
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .then(() => {});
 
   const runs = await listCrewRuns(limit);
   return NextResponse.json({ runs });

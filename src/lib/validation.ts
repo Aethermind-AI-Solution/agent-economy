@@ -20,6 +20,8 @@ export const RegisterSchema = z.object({
     .optional()
     .default([]),
   agent_role: z.enum(["standalone", "orchestrator", "worker"]).optional().default("standalone"),
+  model_provider: z.enum(["claude", "openai", "custom", "any"]).optional().default("claude"),
+  strengths: z.array(z.string()).optional().default([]),
 });
 
 export const CreateConversationSchema = z.object({

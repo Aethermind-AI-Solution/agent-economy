@@ -25,15 +25,23 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const model = req.nextUrl.searchParams.get("model");
+  const strength = req.nextUrl.searchParams.get("strength");
+
   // Search agents whose capabilities JSONB array contains
   // an object with matching service_type.
   // Postgres GIN index on capabilities makes this fast.
-  const { data: vendors, error } = await supabase
+  let q = supabase
     .from("agents")
-    .select("id, name, capabilities, reputation_score, total_transactions")
+    .select("id, name, capabilities, reputation_score, total_transactions, model_provider, strengths")
     .eq("status", "active")
     .in("type", ["vendor", "both"])
     .filter("capabilities", "cs", JSON.stringify([{ service_type: serviceType }]));
+
+  if (model) q = q.eq("model_provider", model);
+  if (strength) q = q.filter("strengths", "cs", JSON.stringify([strength]));
+
+  const { data: vendors, error } = await q;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -52,6 +60,8 @@ export async function GET(req: NextRequest) {
         score: v.reputation_score,
         transactions: v.total_transactions,
       },
+      model_provider: v.model_provider,
+      strengths: v.strengths ?? [],
     };
   });
 

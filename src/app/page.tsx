@@ -504,11 +504,13 @@ export default async function Dashboard({
                   <th>Name</th>
                   <th>Type</th>
                   <th>Balance</th>
-                  <th>Reputation</th>
+                  <th>Reputation / Trust</th>
                   <th>Transactions</th>
                   <th>Episodes</th>
                   <th>Threads</th>
                   <th>Role</th>
+                  <th>Model</th>
+                  <th>Strengths</th>
                   <th>Status</th>
                   <th>ID</th>
                 </tr>
@@ -524,7 +526,10 @@ export default async function Dashboard({
                       ${Number(a.balance).toFixed(2)}
                     </td>
                     <td className="mono">
-                      {Number(a.reputation_score).toFixed(1)} / 5.0
+                      {Number(a.reputation_score).toFixed(1)}/5 · <span style={{
+                        color: Number(a.trust_score ?? 0) >= 7 ? "#059669" : Number(a.trust_score ?? 0) >= 4 ? "#ca8a04" : "#dc2626",
+                        fontWeight: 600,
+                      }}>trust: {Number(a.trust_score ?? 0).toFixed(1)}</span>
                     </td>
                     <td className="mono">{a.total_transactions}</td>
                     <td className="mono" style={{ color: a.episode_count > 0 ? "#8b5cf6" : "#8888a0" }}>
@@ -540,6 +545,17 @@ export default async function Dashboard({
                       }}>
                         {a.agent_role ?? "standalone"}
                       </span>
+                    </td>
+                    <td>
+                      <span className="type-pill" style={{
+                        borderColor: a.model_provider === "claude" ? "#8b5cf640" : a.model_provider === "openai" ? "#05966940" : "#2a2a3a",
+                        color: a.model_provider === "claude" ? "#8b5cf6" : a.model_provider === "openai" ? "#059669" : "#8888a0",
+                      }}>
+                        {a.model_provider ?? "claude"}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: "#8888a0", maxWidth: 120 }}>
+                      {(a.strengths ?? []).slice(0, 2).join(", ") || "—"}
                     </td>
                     <td>
                       <span

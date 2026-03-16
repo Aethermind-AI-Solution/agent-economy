@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   // Verify vendor exists and is active
   const { data: vendor } = await supabase
     .from("agents")
-    .select("id, status, type")
+    .select("id, status, type, min_buyer_trust")
     .eq("id", vendor_id)
     .single();
 
@@ -69,6 +69,21 @@ export async function POST(req: NextRequest) {
       { error: "Target agent is not a vendor" },
       { status: 400 }
     );
+  }
+
+  // Trust gate: buyer must meet vendor's minimum trust requirement
+  if ((vendor.min_buyer_trust ?? 0) > 0) {
+    const { data: buyerAgent } = await supabase
+      .from("agents")
+      .select("trust_score")
+      .eq("id", agent!.id)
+      .single();
+    if ((buyerAgent?.trust_score ?? 0) < (vendor.min_buyer_trust ?? 0)) {
+      return NextResponse.json(
+        { error: "Trust score too low for this vendor" },
+        { status: 403 }
+      );
+    }
   }
 
   // Create conversation
