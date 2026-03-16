@@ -53,8 +53,21 @@ async function getData(opts: {
     episodeCountMap[row.agent_id] = (episodeCountMap[row.agent_id] ?? 0) + 1;
   }
 
+  const { data: threadCounts } = await supabase
+    .from("agent_threads")
+    .select("orchestrator_id")
+    .in("orchestrator_id", (agents.data ?? []).map((a: any) => a.id));
+  const threadCountMap: Record<string, number> = {};
+  for (const row of threadCounts ?? []) {
+    threadCountMap[row.orchestrator_id] = (threadCountMap[row.orchestrator_id] ?? 0) + 1;
+  }
+
   return {
-    agents: (agents.data ?? []).map((a: any) => ({ ...a, episode_count: episodeCountMap[a.id] ?? 0 })),
+    agents: (agents.data ?? []).map((a: any) => ({
+      ...a,
+      episode_count: episodeCountMap[a.id] ?? 0,
+      thread_count: threadCountMap[a.id] ?? 0,
+    })),
     conversations: convResult.data ?? [],
     totalConversations: convResult.count ?? 0,
     reviews: reviews.data ?? [],
@@ -474,6 +487,8 @@ export default async function Dashboard({
                   <th>Reputation</th>
                   <th>Transactions</th>
                   <th>Episodes</th>
+                  <th>Threads</th>
+                  <th>Role</th>
                   <th>Status</th>
                   <th>ID</th>
                 </tr>
@@ -494,6 +509,17 @@ export default async function Dashboard({
                     <td className="mono">{a.total_transactions}</td>
                     <td className="mono" style={{ color: a.episode_count > 0 ? "#8b5cf6" : "#8888a0" }}>
                       {a.episode_count}
+                    </td>
+                    <td className="mono" style={{ color: a.thread_count > 0 ? "#8b5cf6" : "#8888a0" }}>
+                      {a.thread_count}
+                    </td>
+                    <td>
+                      <span className="type-pill" style={{
+                        borderColor: a.agent_role === "orchestrator" ? "#8b5cf6" : a.agent_role === "worker" ? "#ea580c" : "#2a2a3a",
+                        color: a.agent_role === "orchestrator" ? "#8b5cf6" : a.agent_role === "worker" ? "#ea580c" : "#8888a0",
+                      }}>
+                        {a.agent_role ?? "standalone"}
+                      </span>
                     </td>
                     <td>
                       <span

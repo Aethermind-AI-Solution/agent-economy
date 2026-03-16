@@ -19,6 +19,7 @@ export const RegisterSchema = z.object({
     )
     .optional()
     .default([]),
+  agent_role: z.enum(["standalone", "orchestrator", "worker"]).optional().default("standalone"),
 });
 
 export const CreateConversationSchema = z.object({

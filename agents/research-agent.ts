@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { AgentSDK, type Episode } from "../src/lib/sdk";
+import { createThread, startThread, completeThread, failThread } from "../src/lib/threads";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,118 @@ function parseJsonFromClaude(text: string): any {
   return JSON.parse(cleaned);
 }
 
+async function decompose(query: string, anthropic: Anthropic): Promise<string[]> {
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      system: "You are a research query decomposer. Split a broad research query into exactly 5 focused, non-overlapping sub-queries that together cover the full scope. Respond with a JSON array of 5 strings only — no markdown, no explanation.",
+      messages: [
+        {
+          role: "user",
+          content: `Split this into exactly 5 focused sub-queries: "${query}"\n\nReturn ONLY a JSON array of 5 strings.`,
+        },
+      ],
+    });
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const subQueries: string[] = parseJsonFromClaude(text);
+    if (!Array.isArray(subQueries) || subQueries.length !== 5) {
+      return [query];
+    }
+    return subQueries;
+  } catch (err: any) {
+    log(`decompose() failed: ${err.message} — falling back to single query`);
+    return [query];
+  }
+}
+
+async function findSubQuery(subQuery: string, anthropic: Anthropic): Promise<Company[]> {
+  const response = await anthropic.messages.create({
+    model: "claude-opus-4-6",
+    max_tokens: 4096,
+    system: `You are a market research specialist with deep knowledge of the Indian business landscape.
+You identify real companies that would benefit from AI automation solutions.
+Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+    messages: [
+      {
+        role: "user",
+        content: `Find 8-12 Indian companies matching this criteria: "${subQuery}"
+
+For each company, provide realistic details based on your knowledge of Indian businesses.
+Focus on companies with clear automation opportunities: manual data entry, large workforces doing
+repetitive tasks, outdated processes, or stated interest in digital transformation.
+
+Return a JSON array where each element has exactly these fields:
+- company_name: string (real or realistic Indian company name)
+- industry: string (specific industry sector)
+- website: string (likely website URL, e.g. "https://company.com")
+- why_they_need_ai: string (specific pain point or manual process this company faces)
+- source: string (e.g. "industry knowledge", "sector research", "public reports")
+
+Return ONLY the JSON array, nothing else.`,
+      },
+    ],
+  });
+
+  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  try {
+    const companies: Company[] = parseJsonFromClaude(text);
+    return companies;
+  } catch {
+    return [];
+  }
+}
+
+export async function findCompaniesParallel(
+  query: string,
+  anthropic: Anthropic,
+  sdk?: AgentSDK,
+  agentId?: string
+): Promise<Company[]> {
+  log(`Decomposing query into 5 parallel sub-queries...`);
+  const subQueries = await decompose(query, anthropic);
+
+  if (subQueries.length === 1) {
+    log("Decomposition failed — running single-query fallback");
+    return findCompanies(query, anthropic, sdk);
+  }
+
+  log(`Running ${subQueries.length} sub-queries in parallel...`);
+  const results = await Promise.all(
+    subQueries.map(async (subQuery, i) => {
+      let threadId = "";
+      if (agentId) {
+        try {
+          threadId = await createThread(agentId, "research_subtask", { subQuery, index: i });
+          if (threadId) await startThread(threadId);
+        } catch {}
+      }
+      try {
+        log(`Sub-query ${i + 1}/5: "${subQuery.slice(0, 60)}"`);
+        const companies = await findSubQuery(subQuery, anthropic);
+        log(`Sub-query ${i + 1}/5 done: ${companies.length} companies`);
+        if (threadId) completeThread(threadId, { count: companies.length }).catch(() => {});
+        return companies;
+      } catch (err: any) {
+        log(`Sub-query ${i + 1}/5 failed: ${err.message}`);
+        if (threadId) failThread(threadId, err.message).catch(() => {});
+        return [] as Company[];
+      }
+    })
+  );
+
+  // Merge + deduplicate by normalised company_name
+  const seen = new Set<string>();
+  const deduped = results.flat().filter((c) => {
+    const key = c.company_name.toLowerCase().replace(/\s+/g, "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  log(`Merged ${results.flat().length} → ${deduped.length} unique companies`);
+  return deduped.slice(0, 50);
+}
+
 export interface Company {
   company_name: string;
   industry: string;
@@ -76,6 +189,7 @@ export async function registerResearchAgent(
       name: AGENT_NAME,
       type: "buyer",
       capabilities: [],
+      agent_role: "orchestrator",
     }),
   });
 
@@ -169,8 +283,8 @@ async function main() {
   const platformUrl = process.env.PLATFORM_URL ?? "http://localhost:3000";
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  await registerResearchAgent(platformUrl);
-  const companies = await findCompanies(query, anthropic, undefined);
+  const { agentId } = await registerResearchAgent(platformUrl);
+  const companies = await findCompaniesParallel(query, anthropic, undefined, agentId);
   console.log(JSON.stringify(companies, null, 2));
 }
 

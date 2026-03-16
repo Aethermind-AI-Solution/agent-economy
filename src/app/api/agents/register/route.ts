@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, type, capabilities } = parsed.data;
+  const { name, type, capabilities, agent_role } = parsed.data;
 
   // Generate API key
   const rawKey = `pk_${type}_${name.toLowerCase().replace(/[^a-z0-9]/g, "")}_${crypto.randomBytes(12).toString("hex")}`;
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
       api_key_prefix: keyPrefix,
       balance: type === "buyer" || type === "both" ? 25.0 : 0.0, // Free starter credits for buyers
       capabilities,
+      agent_role,
     })
     .select(
       "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"

@@ -65,6 +65,19 @@ export interface Episode {
   created_at: string;
 }
 
+export interface Thread {
+  id: string;
+  orchestrator_id: string;
+  task_type: string;
+  task_input: Record<string, unknown>;
+  status: "pending" | "running" | "completed" | "failed";
+  result: Record<string, unknown> | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
 export type MessageType = "offer" | "accept" | "reject" | "deliver" | "confirm" | "dispute";
 
 export class AgentSDK {
@@ -161,6 +174,27 @@ export class AgentSDK {
       "GET", `/api/agents/me/episodes?${params.toString()}`
     );
     return res.episodes;
+  }
+
+  // ── Threads (Orchestrator / Worker) ──
+
+  async spawnWorker(taskType: string, taskInput: Record<string, unknown>): Promise<string> {
+    const res = await this.request<{ thread_id: string }>("POST", "/api/threads", {
+      task_type: taskType, task_input: taskInput,
+    });
+    return res.thread_id;
+  }
+
+  async completeWorker(threadId: string, result: Record<string, unknown>): Promise<void> {
+    await this.request("PATCH", `/api/threads/${threadId}`, { status: "completed", result });
+  }
+
+  async getMyThreads(status?: Thread["status"], limit = 20): Promise<Thread[]> {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    params.set("limit", String(limit));
+    const res = await this.request<{ threads: Thread[] }>("GET", `/api/threads?${params.toString()}`);
+    return res.threads;
   }
 
   // ── Convenience Helpers ──

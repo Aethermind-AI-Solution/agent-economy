@@ -24,7 +24,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 import Anthropic from "@anthropic-ai/sdk";
 import { AgentSDK } from "../src/lib/sdk";
-import { registerResearchAgent, findCompanies } from "./research-agent";
+import { registerResearchAgent, findCompaniesParallel } from "./research-agent";
 import { registerDataAgent, enrichAndScore } from "./data-agent";
 import { registerSalesAgent, draftOutreach } from "./sales-agent";
 
@@ -157,7 +157,7 @@ async function main() {
   log("\n" + "=".repeat(50));
   log("Step 1: Research");
   log("=".repeat(50));
-  const companies = await findCompanies(query, anthropic, research.sdk);
+  const companies = await findCompaniesParallel(query, anthropic, research.sdk, research.agentId);
   log(`Found ${companies.length} companies`);
 
   // ── Handoff 1: ResearchAgent → DataAgent ──────────────────────────────────
