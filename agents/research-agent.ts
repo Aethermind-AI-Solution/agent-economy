@@ -13,7 +13,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
-import { AgentSDK } from "../src/lib/sdk";
+import { AgentSDK, type Episode } from "../src/lib/sdk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +26,17 @@ function ts() {
 }
 function log(msg: string) {
   console.log(`[${AGENT_NAME} ${ts()}] ${msg}`);
+}
+
+function formatEpisodesForPrompt(episodes: Episode[]): string {
+  if (episodes.length === 0) return "";
+  const lines = episodes.map((ep, i) => {
+    const when = new Date(ep.created_at).toLocaleDateString("en-IN", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    return `Episode ${i + 1} [${when}] — ${ep.outcome.toUpperCase()}\n  ${ep.task_summary}`;
+  });
+  return ["\n\n---", "PAST EXPERIENCE (use to improve this response):", ...lines, "---"].join("\n");
 }
 
 function parseJsonFromClaude(text: string): any {
@@ -86,16 +97,28 @@ export async function registerResearchAgent(
 
 export async function findCompanies(
   query: string,
-  anthropic: Anthropic
+  anthropic: Anthropic,
+  sdk?: AgentSDK
 ): Promise<Company[]> {
   log(`Researching: "${query}"`);
+
+  let episodeContext = "";
+  if (sdk) {
+    try {
+      const episodes = await sdk.getMyEpisodes("lead_enrichment", 3);
+      episodeContext = formatEpisodesForPrompt(episodes);
+      if (episodes.length > 0) log(`Loaded ${episodes.length} past episode(s) for context`);
+    } catch (err: any) {
+      log(`Warning: Could not fetch episodes (${err.message}) — continuing without context`);
+    }
+  }
 
   const response = await anthropic.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 8192,
     system: `You are a market research specialist with deep knowledge of the Indian business landscape.
 You identify real companies that would benefit from AI automation solutions.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
     messages: [
       {
         role: "user",
@@ -147,7 +170,7 @@ async function main() {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   await registerResearchAgent(platformUrl);
-  const companies = await findCompanies(query, anthropic);
+  const companies = await findCompanies(query, anthropic, undefined);
   console.log(JSON.stringify(companies, null, 2));
 }
 

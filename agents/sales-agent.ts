@@ -14,7 +14,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
-import { AgentSDK } from "../src/lib/sdk";
+import { AgentSDK, type Episode } from "../src/lib/sdk";
 import type { ScoredLead } from "./data-agent";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +36,17 @@ function parseJsonFromClaude(text: string): any {
     .replace(/\s*```\s*$/m, "")
     .trim();
   return JSON.parse(cleaned);
+}
+
+function formatEpisodesForPrompt(episodes: Episode[]): string {
+  if (episodes.length === 0) return "";
+  const lines = episodes.map((ep, i) => {
+    const when = new Date(ep.created_at).toLocaleDateString("en-IN", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    return `Episode ${i + 1} [${when}] — ${ep.outcome.toUpperCase()}\n  ${ep.task_summary}`;
+  });
+  return ["\n\n---", "PAST EXPERIENCE (use to improve this response):", ...lines, "---"].join("\n");
 }
 
 export interface OutreachDraft {
@@ -95,10 +106,22 @@ export async function registerSalesAgent(
 
 export async function draftOutreach(
   scoredLeads: ScoredLead[],
-  anthropic: Anthropic
+  anthropic: Anthropic,
+  sdk?: AgentSDK
 ): Promise<OutreachDraft[]> {
   const top10 = scoredLeads.slice(0, 10);
   log(`Drafting outreach for top ${top10.length} leads...`);
+
+  let episodeContext = "";
+  if (sdk) {
+    try {
+      const episodes = await sdk.getMyEpisodes("outreach_drafting", 3);
+      episodeContext = formatEpisodesForPrompt(episodes);
+      if (episodes.length > 0) log(`Loaded ${episodes.length} past episode(s) for context`);
+    } catch (err: any) {
+      log(`Warning: Could not fetch episodes (${err.message}) — continuing without context`);
+    }
+  }
 
   const response = await anthropic.messages.create({
     model: "claude-opus-4-6",
@@ -108,7 +131,7 @@ Aethermind helps businesses automate manual processes, reduce operational costs,
 Services include: intelligent document processing, workflow automation, AI-powered data pipelines,
 custom ML models, and conversational AI for customer service.
 Your outreach messages are professional, specific to each company, and genuinely helpful — never generic or pushy.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
     messages: [
       {
         role: "user",
@@ -171,7 +194,7 @@ async function main() {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   await registerSalesAgent(platformUrl);
-  const drafts = await draftOutreach(leads, anthropic);
+  const drafts = await draftOutreach(leads, anthropic, undefined);
   console.log(JSON.stringify(drafts, null, 2));
 }
 

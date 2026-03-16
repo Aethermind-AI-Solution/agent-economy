@@ -1,23 +1,23 @@
 # Build Tracker — Agent Economy Platform
 
-Last updated: 2026-03-15
-Active sprint: Sprint 3 — Episode Memory
-
----
-
-## Current Sprint: Sprint 3
-
-**Goal:** Give agents persistent memory of past transactions so they can learn and improve over time.
-
-| ID | Ticket | Status | Owner | Notes |
-|----|--------|--------|-------|-------|
-| 3.1 | `agent_episodes` table migration | 🔲 Pending | — | `supabase/migrations/005_agent_episodes.sql` |
-| 3.2 | `recordEpisode()` + `getRelevantEpisodes()` in `src/lib/episodes.ts` | 🔲 Pending | — | fire-and-forget hook after releaseEscrow |
-| 3.3 | Hook into messages route after releaseEscrow | 🔲 Pending | — | non-blocking, must not crash transaction |
+Last updated: 2026-03-16
+Active sprint: Sprint 4 — Orchestrator + Workers
 
 ---
 
 ## Completed Sprints
+
+### Sprint 3 — Episode Memory (2026-03-16)
+
+| ID | Ticket | Status |
+|----|--------|--------|
+| 3.1 | `agent_episodes` table + RLS + index | ✅ Done |
+| 3.2 | `src/lib/episodes.ts` — `recordEpisode()` + `getRelevantEpisodes()` | ✅ Done |
+| 3.3 | Hook in messages route — fires on `completed` + `disputed` (fire-and-forget) | ✅ Done |
+| 3.4 | `GET /api/agents/me/episodes` API route | ✅ Done |
+| 3.5 | `getMyEpisodes()` in SDK + `Episode` interface | ✅ Done |
+| 3.6 | Crew integration — `sdk?` param + episode context injected into Claude system prompts | ✅ Done |
+| 3.7 | Dashboard — Episodes column on agents table (purple if >0) | ✅ Done |
 
 ### Sprint 2 — Admin & Visibility (2026-03-15)
 
@@ -64,8 +64,8 @@ Active sprint: Sprint 3 — Episode Memory
 |--------|-------|--------|
 | Sprint 1 | Fix What's Broken | ✅ Done |
 | Sprint 2 | Admin & Visibility | ✅ Done |
-| Sprint 3 | Episode Memory | 🟡 Active |
-| Sprint 4 | Orchestrator + Workers | 🔲 Queued |
+| Sprint 3 | Episode Memory | ✅ Done |
+| Sprint 4 | Orchestrator + Workers | 🟡 Next |
 | Sprint 5 | Trust & Reputation | 🔲 Queued |
 | Sprint 6 | Monetisation | 🔲 Queued |
 | Sprint 7 | Model Routing + Warm Starts | 🔲 Queued |
@@ -89,9 +89,14 @@ Active sprint: Sprint 3 — Episode Memory
 - `src/app/page.tsx` — pagination, filters, analytics chart
 
 ### Sprint 3
-- `supabase/migrations/005_agent_episodes.sql` — episodes table + index
-- `src/lib/episodes.ts` — recordEpisode(), getRelevantEpisodes()
-- `src/app/api/conversations/[id]/messages/route.ts` — hook after releaseEscrow
+- `supabase/migrations/005_agent_episodes.sql` — episodes table + RLS + index
+- `src/lib/episodes.ts` — `recordEpisode()`, `getRelevantEpisodes()`
+- `src/app/api/conversations/[id]/messages/route.ts` — `recordEpisode()` hook in fire-and-forget block
+- `src/app/api/agents/me/episodes/route.ts` — `GET /api/agents/me/episodes`
+- `src/lib/sdk.ts` — `Episode` interface + `getMyEpisodes()` method
+- `agents/research-agent.ts`, `data-agent.ts`, `sales-agent.ts` — `sdk?` param + episode context injection
+- `agents/run-crew.ts` — passes SDK instances to work lambdas
+- `src/app/page.tsx` — Episodes column on agents table
 
 ### Sprint 4
 - `supabase/migrations/006_orchestrator_threads.sql` — agent_threads + agent_role
@@ -132,9 +137,9 @@ Active sprint: Sprint 3 — Episode Memory
 
 ---
 
-## Known Production Issues (as of 2026-03-15)
+## Known Production Issues (as of 2026-03-16)
 
-All Sprint 1 and Sprint 2 issues resolved. No known P0/P1 issues outstanding.
+All Sprint 1, 2, and 3 issues resolved. No known P0/P1 issues outstanding.
 
 ---
 

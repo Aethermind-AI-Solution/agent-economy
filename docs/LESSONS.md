@@ -1,6 +1,6 @@
 # Lessons Learned — Agent Economy Platform
 
-Last updated: 2026-03-15
+Last updated: 2026-03-16
 
 ---
 
@@ -251,6 +251,71 @@ SELECT * FROM agent_rate_limits WHERE key = '{agent_id}' ORDER BY window_start D
 **Root cause:** The `conversation_events` table didn't exist when the 12 older conversations were created. The fire-and-forget insert (`Promise.all([supabase.from("conversation_events").insert(...)...]).catch(...)`) silently drops on table-not-found errors.
 
 **Rule:** Audit log tables are append-only and only capture events going forward from when they were created. Pre-existing data has no retroactive event history. Document this clearly in UI — e.g., "State timeline available for transactions from [date]".
+
+---
+
+---
+
+## Sprint 3 Testing Session (2026-03-16)
+
+### Lesson 25: Episode rows are fire-and-forget — always sleep before asserting
+
+**Observation:** After the `confirm` message returned 200, immediately querying `/api/agents/me/episodes` returned `[]`.
+After a 2-second sleep, the rows were present.
+
+**Root cause:** `recordEpisode()` is called inside a `Promise.all(...).catch(...)` block that is NOT awaited.
+The HTTP response is sent first; the DB insert happens concurrently on the same event loop.
+The insert completes within ~200ms but the test hit it before that window closed.
+
+**Rule:** When testing fire-and-forget side effects (audit log, episode recording, idempotency cache),
+always wait at least 1-2 seconds after the triggering response before asserting the side-effect rows.
+
+---
+
+### Lesson 26: `UNIQUE (agent_id, conversation_id)` prevents double-recording on retry
+
+**Design:** The `agent_episodes` table has a unique constraint on `(agent_id, conversation_id)`.
+
+**Benefit:** If the `confirm` message is retried (e.g., idempotency key collision), `recordEpisode()` is called
+again. The second `INSERT` fails with a unique violation, but the `.catch()` on `Promise.all` swallows it.
+No duplicate episodes are written.
+
+**Rule:** Always add a unique constraint on any append-only side-effect table that could be written
+from a retry-safe endpoint. Let the DB enforce idempotency at the storage layer.
+
+---
+
+### Lesson 27: Each agent's task_type is their OWN service_type, not the conversation's
+
+**Problem during crew integration:** ResearchAgent is the *buyer* of `lead_enrichment` service.
+DataAgent is the *vendor*. When ResearchAgent calls `getMyEpisodes("lead_enrichment")`,
+it correctly returns its buyer-role episodes — because `recordEpisode()` writes one row per role,
+both keyed to the conversation's `service_type`.
+
+**Verified:** Both ResearchAgent (role=buyer) and DataAgent (role=vendor) return episodes
+with `task_type: "lead_enrichment"` from the same conversation. `getMyEpisodes()` filters
+by `agent_id`, so each agent sees only its own rows.
+
+**Rule:** The `task_type` to pass to `getMyEpisodes()` is always the `service_type` of the
+conversation — regardless of whether the agent was buyer or vendor in that conversation.
+
+---
+
+### Lesson 28: SalesAgent gets 0 past episodes on first run — expected behaviour
+
+**Observation:** In the first crew run after Sprint 3 deployment, the log showed:
+```
+[DataAgent] Loaded 2 past episode(s) for context   ← had 2 test episodes from manual testing
+[ResearchAgent] Loaded 2 past episode(s) for context
+[SalesAgent] Loaded 0 past episode(s) for context  ← first outreach_drafting run ever
+```
+The second crew run showed `Loaded 1 past episode(s) for context` for SalesAgent.
+
+**This is correct.** Episodes accumulate progressively. The system degrades gracefully
+(`formatEpisodesForPrompt([])` returns `""` — no context appended, no prompt change).
+
+**Rule:** Document that episode-enhanced output only appears from the **second run onward** for each agent.
+First run is always zero context. The crew logs make this transparent.
 
 ---
 

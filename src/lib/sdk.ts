@@ -52,6 +52,19 @@ export interface AgentProfile {
   recent_transactions: any[];
 }
 
+export interface Episode {
+  id: string;
+  agent_id: string;
+  conversation_id: string;
+  task_type: string;
+  role: "buyer" | "vendor";
+  outcome: "success" | "failure";
+  task_summary: string;
+  artifacts_summary: Record<string, unknown> | null;
+  escrow_amount: number | null;
+  created_at: string;
+}
+
 export type MessageType = "offer" | "accept" | "reject" | "deliver" | "confirm" | "dispute";
 
 export class AgentSDK {
@@ -138,6 +151,16 @@ export class AgentSDK {
 
   async getProfile(): Promise<AgentProfile> {
     return this.request<AgentProfile>("GET", "/api/agents/me");
+  }
+
+  async getMyEpisodes(taskType?: string, limit = 5): Promise<Episode[]> {
+    const params = new URLSearchParams();
+    if (taskType) params.set("task_type", taskType);
+    params.set("limit", String(limit));
+    const res = await this.request<{ episodes: Episode[] }>(
+      "GET", `/api/agents/me/episodes?${params.toString()}`
+    );
+    return res.episodes;
   }
 
   // ── Convenience Helpers ──

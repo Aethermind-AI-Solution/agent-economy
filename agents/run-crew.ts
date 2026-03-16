@@ -157,7 +157,7 @@ async function main() {
   log("\n" + "=".repeat(50));
   log("Step 1: Research");
   log("=".repeat(50));
-  const companies = await findCompanies(query, anthropic);
+  const companies = await findCompanies(query, anthropic, research.sdk);
   log(`Found ${companies.length} companies`);
 
   // ── Handoff 1: ResearchAgent → DataAgent ──────────────────────────────────
@@ -174,7 +174,7 @@ async function main() {
     serviceType: "lead_enrichment",
     rfqPayload: { query, companies },
     work: async () => {
-      scoredLeads = await enrichAndScore(companies, anthropic);
+      scoredLeads = await enrichAndScore(companies, anthropic, data.sdk);
       return {
         artifacts: [{ type: "scored_leads", data: scoredLeads }],
       };
@@ -203,7 +203,7 @@ async function main() {
     serviceType: "outreach_drafting",
     rfqPayload: { scoredLeads: scoredLeads! },
     work: async () => {
-      outreachDrafts = await draftOutreach(scoredLeads!, anthropic);
+      outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk);
       return {
         artifacts: [{ type: "outreach_drafts", data: outreachDrafts }],
       };

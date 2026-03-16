@@ -13,7 +13,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
-import { AgentSDK } from "../src/lib/sdk";
+import { AgentSDK, type Episode } from "../src/lib/sdk";
 import type { Company } from "./research-agent";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +35,17 @@ function parseJsonFromClaude(text: string): any {
     .replace(/\s*```\s*$/m, "")
     .trim();
   return JSON.parse(cleaned);
+}
+
+function formatEpisodesForPrompt(episodes: Episode[]): string {
+  if (episodes.length === 0) return "";
+  const lines = episodes.map((ep, i) => {
+    const when = new Date(ep.created_at).toLocaleDateString("en-IN", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    return `Episode ${i + 1} [${when}] — ${ep.outcome.toUpperCase()}\n  ${ep.task_summary}`;
+  });
+  return ["\n\n---", "PAST EXPERIENCE (use to improve this response):", ...lines, "---"].join("\n");
 }
 
 export interface ScoredLead {
@@ -96,16 +107,28 @@ export async function registerDataAgent(
 
 export async function enrichAndScore(
   companies: Company[],
-  anthropic: Anthropic
+  anthropic: Anthropic,
+  sdk?: AgentSDK
 ): Promise<ScoredLead[]> {
   log(`Enriching and scoring ${companies.length} companies...`);
+
+  let episodeContext = "";
+  if (sdk) {
+    try {
+      const episodes = await sdk.getMyEpisodes("lead_enrichment", 3);
+      episodeContext = formatEpisodesForPrompt(episodes);
+      if (episodes.length > 0) log(`Loaded ${episodes.length} past episode(s) for context`);
+    } catch (err: any) {
+      log(`Warning: Could not fetch episodes (${err.message}) — continuing without context`);
+    }
+  }
 
   const response = await anthropic.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 8192,
     system: `You are a business intelligence analyst specializing in AI automation readiness assessment for Indian companies.
 You have deep knowledge of Indian business sectors, typical company sizes, decision-maker roles, and digital transformation maturity.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
     messages: [
       {
         role: "user",
@@ -166,7 +189,7 @@ async function main() {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   await registerDataAgent(platformUrl);
-  const leads = await enrichAndScore(companies, anthropic);
+  const leads = await enrichAndScore(companies, anthropic, undefined);
   console.log(JSON.stringify(leads, null, 2));
 }
 

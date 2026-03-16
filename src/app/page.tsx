@@ -43,8 +43,18 @@ async function getData(opts: {
     supabase.from("platform_revenue").select("fee_amount, created_at"),
   ]);
 
+  const { data: episodeCounts } = await supabase
+    .from("agent_episodes")
+    .select("agent_id")
+    .in("agent_id", (agents.data ?? []).map((a: any) => a.id));
+
+  const episodeCountMap: Record<string, number> = {};
+  for (const row of episodeCounts ?? []) {
+    episodeCountMap[row.agent_id] = (episodeCountMap[row.agent_id] ?? 0) + 1;
+  }
+
   return {
-    agents: agents.data ?? [],
+    agents: (agents.data ?? []).map((a: any) => ({ ...a, episode_count: episodeCountMap[a.id] ?? 0 })),
     conversations: convResult.data ?? [],
     totalConversations: convResult.count ?? 0,
     reviews: reviews.data ?? [],
@@ -463,6 +473,7 @@ export default async function Dashboard({
                   <th>Balance</th>
                   <th>Reputation</th>
                   <th>Transactions</th>
+                  <th>Episodes</th>
                   <th>Status</th>
                   <th>ID</th>
                 </tr>
@@ -481,6 +492,9 @@ export default async function Dashboard({
                       {Number(a.reputation_score).toFixed(1)} / 5.0
                     </td>
                     <td className="mono">{a.total_transactions}</td>
+                    <td className="mono" style={{ color: a.episode_count > 0 ? "#8b5cf6" : "#8888a0" }}>
+                      {a.episode_count}
+                    </td>
                     <td>
                       <span
                         className="status-pill"

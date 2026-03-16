@@ -5,6 +5,7 @@ import { validateTransition, type MessageType } from "@/lib/state-machine";
 import { createEscrow, releaseEscrow, freezeEscrow } from "@/lib/escrow";
 import { rateLimit } from "@/lib/rate-limit";
 import { SendMessageSchema } from "@/lib/validation";
+import { recordEpisode } from "@/lib/episodes";
 
 /**
  * POST /api/conversations/:id/messages
@@ -196,7 +197,7 @@ export async function POST(
     },
   };
 
-  // 7. Fire-and-forget: audit log + idempotency cache (never block response)
+  // 7. Fire-and-forget: audit log + idempotency cache + episode memory (never block response)
   Promise.all([
     // Audit log
     supabase.from("conversation_events").insert({
@@ -214,6 +215,10 @@ export async function POST(
           key: `${conversationId}:${message_type}:${idempotencyKey}`,
           response: responseBody,
         })
+      : Promise.resolve(),
+    // Episode memory — fires on terminal states only
+    (transition.newStatus === "completed" || transition.newStatus === "disputed")
+      ? recordEpisode(updated)
       : Promise.resolve(),
   ]).catch((err) =>
     console.error(JSON.stringify({ event: "post_transition_error", conversationId, error: err?.message }))
