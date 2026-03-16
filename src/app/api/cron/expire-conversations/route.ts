@@ -23,13 +23,16 @@ export async function GET(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-  // 1. Expire non-funded conversations (rfq_sent, offer_sent) — safe, no escrow
+  // 1. Expire non-funded conversations (rfq_sent, offer_sent, delivered) — safe, no escrow
+  //    Covers both: explicit expires_at exceeded, AND conversations with no expires_at
+  //    that are older than 1 hour (e.g. created by crew agents that were killed).
   const { data: expiredSafe, error: err1 } = await supabase
     .from("conversations")
     .update({ status: "expired", updated_at: now })
-    .in("status", ["rfq_sent", "offer_sent"])
-    .lt("expires_at", now)
+    .in("status", ["rfq_sent", "offer_sent", "delivered"])
+    .or(`expires_at.lt.${now},and(expires_at.is.null,created_at.lt.${oneHourAgo})`)
     .select("id");
 
   if (err1) {
@@ -41,7 +44,7 @@ export async function GET(req: NextRequest) {
     .from("conversations")
     .update({ status: "expired", escrow_frozen: true, updated_at: now })
     .eq("status", "accepted")
-    .lt("expires_at", now)
+    .or(`expires_at.lt.${now},and(expires_at.is.null,created_at.lt.${oneHourAgo})`)
     .select("id");
 
   if (err2) {
