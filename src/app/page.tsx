@@ -197,9 +197,9 @@ function AnalyticsChart({ revenue }: { revenue: any[] }) {
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string }>;
+  searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string; crew_msg?: string }>;
 }) {
-  const { key, status, sort, dir, page } = await searchParams;
+  const { key, status, sort, dir, page, crew_msg } = await searchParams;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (adminPassword && key !== adminPassword) {
@@ -588,6 +588,24 @@ export default async function Dashboard({
 
           {/* Crew Runs */}
           <div className="section">
+            {/* Terminal banner — shown when Vercel blocks the GUI trigger */}
+            {crew_msg && (
+              <div style={{
+                marginBottom: 16, padding: "14px 20px", borderRadius: 8,
+                background: "#1a1a26", border: "1px solid #ca8a04",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#ca8a04", marginBottom: 8, fontFamily: "JetBrains Mono, monospace" }}>
+                  ⚠ Crew runs cannot start from Vercel (no background processes). Run from your terminal:
+                </div>
+                <code style={{
+                  display: "block", padding: "10px 14px", borderRadius: 6,
+                  background: "#0a0a0f", color: "#e4e4ef", fontSize: 13,
+                  fontFamily: "JetBrains Mono, monospace", userSelect: "all",
+                }}>
+                  npm run crew &quot;{crew_msg}&quot;
+                </code>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "1px solid #2a2a3a" }}>
               <div className="section-title" style={{ margin: 0, border: 0, padding: 0 }}>Crew Runs</div>
               <form action="/api/crew-runs" method="POST" style={{ display: "flex", gap: 8 }}>

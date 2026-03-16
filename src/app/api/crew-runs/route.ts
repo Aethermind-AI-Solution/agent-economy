@@ -66,10 +66,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "query must be at least 10 characters" }, { status: 400 });
   }
 
-  // Pre-create the run record so it appears in the dashboard immediately.
+  // On Vercel, child processes are not supported — redirect with a hint
+  // so the user knows to run from the terminal instead.
+  if (process.env.VERCEL === "1") {
+    const keyParam = key ? `key=${encodeURIComponent(key)}&` : "";
+    return NextResponse.redirect(
+      new URL(`/?${keyParam}crew_msg=${encodeURIComponent(query.trim())}`, req.url)
+    );
+  }
+
+  // Local dev: create the run record and spawn the background process.
   const runId = await createCrewRun(query.trim());
 
-  // Spawn run-crew.ts as a detached background process.
   const cwd = process.cwd();
   const tsxBin = path.join(cwd, "node_modules", ".bin", "tsx");
   const scriptPath = path.join(cwd, "agents", "run-crew.ts");
