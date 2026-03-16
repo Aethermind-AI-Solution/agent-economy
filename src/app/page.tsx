@@ -36,7 +36,14 @@ async function getData(opts: {
     convQuery = convQuery.eq("status", opts.statusFilter);
   }
 
-  const [agents, convResult, reviews, revenueResult, crewRunsResult, draftsSentResult, pipelineActiveResult] = await Promise.all([
+  // Fire-and-forget: mark stale "running" crew runs as failed (process killed)
+  supabase.from("crew_runs")
+    .update({ status: "failed", error: "Timed out — process was killed" })
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .then(() => {});
+
+  const [agents, convResult, reviews, revenueResult, crewRunsResult, draftsSentResult, pipelineActiveResult, activeTxResult, disputedTxResult] = await Promise.all([
     supabase.from("agents").select("*").order("created_at", { ascending: false }),
     convQuery,
     supabase.from("reviews").select("*"),
@@ -44,6 +51,10 @@ async function getData(opts: {
     supabase.from("crew_runs").select("*").order("created_at", { ascending: false }).limit(10),
     supabase.from("crew_run_drafts").select("id", { count: "exact", head: true }).not("contacted_at", "is", null),
     supabase.from("crew_run_drafts").select("id", { count: "exact", head: true }).in("pipeline_status", ["contacted", "replied", "interested"]),
+    // True active count across all pages
+    supabase.from("conversations").select("id", { count: "exact", head: true }).in("status", ["rfq_sent", "offer_sent", "accepted", "delivered"]),
+    // True disputed count across all pages
+    supabase.from("conversations").select("id", { count: "exact", head: true }).eq("status", "disputed"),
   ]);
 
   const { data: episodeCounts } = await supabase
@@ -78,6 +89,8 @@ async function getData(opts: {
     crewRuns: crewRunsResult.data ?? [],
     draftsSent: draftsSentResult.count ?? 0,
     pipelineActive: pipelineActiveResult.count ?? 0,
+    activeTxCount: activeTxResult.count ?? 0,
+    disputedTxCount: disputedTxResult.count ?? 0,
     page,
     pageSize: PAGE_SIZE,
   };
@@ -204,7 +217,7 @@ export default async function Dashboard({
   }
 
   const currentPage = parseInt(page ?? "1", 10);
-  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, draftsSent, pipelineActive, pageSize } = await getData({
+  const { agents, conversations, totalConversations, reviews, revenue, crewRuns, draftsSent, pipelineActive, activeTxCount, disputedTxCount, pageSize } = await getData({
     statusFilter: status,
     sortBy: sort,
     sortDir: dir,
@@ -223,9 +236,7 @@ export default async function Dashboard({
 
   const completedTx = conversations.filter((c: any) => c.status === "completed");
   const totalEscrow = completedTx.reduce((sum: number, c: any) => sum + (Number(c.escrow_amount) || 0), 0);
-  const activeTx = conversations.filter((c: any) =>
-    ["rfq_sent", "offer_sent", "accepted", "delivered"].includes(c.status)
-  );
+  // Use true DB counts (not paged result) for stat cards
   const disputedTx = conversations.filter(
     (c: any) =>
       c.status === "disputed" ||
@@ -466,11 +477,11 @@ export default async function Dashboard({
             </div>
             <div className="stat">
               <div className="stat-label">Active</div>
-              <div className="stat-value orange">{activeTx.length}</div>
+              <div className="stat-value orange">{activeTxCount}</div>
             </div>
             <div className="stat">
               <div className="stat-label">Disputes</div>
-              <div className="stat-value red">{disputedTx.length}</div>
+              <div className="stat-value red">{disputedTxCount}</div>
             </div>
             <div className="stat">
               <div className="stat-label">Total Fees Earned</div>
