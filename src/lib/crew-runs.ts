@@ -1,12 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-
-// Lazy client — created on first use so env vars are loaded by then
-function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
-}
+import { supabase } from "./supabase";
 
 export interface CrewRun {
   id: string;
@@ -41,7 +33,7 @@ export interface CrewDraft {
 }
 
 export async function createCrewRun(query: string): Promise<string> {
-  const { data, error } = await getSupabase()
+  const { data, error } = await supabase
     .from("crew_runs")
     .insert({ query })
     .select("id")
@@ -57,7 +49,7 @@ export async function completeCrewRun(
   runId: string,
   counts: { company_count: number; lead_count: number; draft_count: number }
 ): Promise<void> {
-  const { error } = await getSupabase()
+  const { error } = await supabase
     .from("crew_runs")
     .update({
       status: "completed",
@@ -71,7 +63,7 @@ export async function completeCrewRun(
 }
 
 export async function failCrewRun(runId: string, errorMsg: string): Promise<void> {
-  const { error } = await getSupabase()
+  const { error } = await supabase
     .from("crew_runs")
     .update({
       status: "failed",
@@ -107,14 +99,14 @@ export async function saveDrafts(
     email_body: d.email_body ?? null,
     linkedin_message: d.linkedin_message ?? null,
   }));
-  const { error } = await getSupabase().from("crew_run_drafts").insert(rows);
+  const { error } = await supabase.from("crew_run_drafts").insert(rows);
   if (error) {
     console.error(JSON.stringify({ event: "save_drafts_error", run_id: runId, error: error.message }));
   }
 }
 
 export async function listCrewRuns(limit = 20): Promise<CrewRun[]> {
-  const { data, error } = await getSupabase()
+  const { data, error } = await supabase
     .from("crew_runs")
     .select("*")
     .order("created_at", { ascending: false })
@@ -135,12 +127,26 @@ export async function updateDraftPipeline(
   }
 ): Promise<void> {
   const update: Record<string, unknown> = { ...fields };
-  // Auto-set contacted_at when first moving out of 'new'
-  if (fields.pipeline_status && fields.pipeline_status !== "new" && fields.pipeline_status !== "skipped") {
-    // Only set if not already set — use upsert logic via conditional
-    update.contacted_at = new Date().toISOString();
+
+  // Only set contacted_at the first time (when moving out of 'new' and not to 'skipped')
+  const shouldSetContacted =
+    fields.pipeline_status &&
+    fields.pipeline_status !== "new" &&
+    fields.pipeline_status !== "skipped";
+
+  if (shouldSetContacted) {
+    const { data: current } = await supabase
+      .from("crew_run_drafts")
+      .select("contacted_at")
+      .eq("id", draftId)
+      .single();
+
+    if (!current?.contacted_at) {
+      update.contacted_at = new Date().toISOString();
+    }
   }
-  const { error } = await getSupabase()
+
+  const { error } = await supabase
     .from("crew_run_drafts")
     .update(update)
     .eq("id", draftId);
@@ -153,7 +159,7 @@ export async function listAllDrafts(
   pipelineStatus?: PipelineStatus | "all",
   limit = 200
 ): Promise<(CrewDraft & { crew_run_query: string })[]> {
-  let q = getSupabase()
+  let q = supabase
     .from("crew_run_drafts")
     .select("*, crew_runs(query)")
     .order("score", { ascending: false })
@@ -178,7 +184,7 @@ export async function setDraftContacted(
   draftId: string,
   contacted: boolean
 ): Promise<void> {
-  const { error } = await getSupabase()
+  const { error } = await supabase
     .from("crew_run_drafts")
     .update({ contacted_at: contacted ? new Date().toISOString() : null })
     .eq("id", draftId);
@@ -191,8 +197,8 @@ export async function getCrewRun(
   runId: string
 ): Promise<{ run: CrewRun; drafts: CrewDraft[] } | null> {
   const [runResult, draftsResult] = await Promise.all([
-    getSupabase().from("crew_runs").select("*").eq("id", runId).single(),
-    getSupabase()
+    supabase.from("crew_runs").select("*").eq("id", runId).single(),
+    supabase
       .from("crew_run_drafts")
       .select("*")
       .eq("crew_run_id", runId)
