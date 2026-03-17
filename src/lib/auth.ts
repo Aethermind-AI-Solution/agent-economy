@@ -70,6 +70,11 @@ export async function authenticate(
     )];
   }
 
+  console.warn(JSON.stringify({
+    event: "auth_slow_path_triggered",
+    hint: "Agent has no api_key_prefix — will backfill on successful auth. If frequent, agents should re-authenticate once to populate their prefix.",
+  }));
+
   for (const agent of agents) {
     const match = await bcrypt.compare(apiKey, agent.api_key_hash);
     if (match) {
