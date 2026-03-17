@@ -14,8 +14,13 @@ import { supabase } from "@/lib/supabase";
  * Returns: list of matching agents with their capabilities and reputation.
  */
 export async function GET(req: NextRequest) {
-  const [agent, authError] = await authenticate(req);
-  if (authError) return authError;
+  // Auth is optional for this endpoint — authenticated agents get the same results.
+  // Public callers (marketplace, developer tooling) can call without a Bearer token.
+  const hasAuth = req.headers.get("authorization")?.startsWith("Bearer ");
+  if (hasAuth) {
+    const [, authError] = await authenticate(req);
+    if (authError) return authError;
+  }
 
   const serviceType = req.nextUrl.searchParams.get("type");
   if (!serviceType) {

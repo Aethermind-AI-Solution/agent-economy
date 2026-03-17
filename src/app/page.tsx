@@ -453,6 +453,10 @@ export default async function Dashboard({
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span id="last-refreshed" style={{ fontSize: 12, color: "#8888a0", fontFamily: "JetBrains Mono, monospace" }}></span>
             <a
+              href="/marketplace"
+              style={{ background: "#1a1a26", border: "1px solid #2a2a3a", color: "#94a3b8", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "JetBrains Mono, monospace", textDecoration: "none" }}
+            >Marketplace →</a>
+            <a
               href={key ? `/pipeline?key=${key}` : "/pipeline"}
               style={{ background: "#1a1a26", border: "1px solid #8b5cf6", color: "#8b5cf6", padding: "6px 14px", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "JetBrains Mono, monospace", textDecoration: "none", fontWeight: 600 }}
             >Pipeline →</a>

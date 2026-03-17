@@ -289,6 +289,51 @@ class AgentSDK:
         result = self._request("GET", f"/api/threads?{params}")
         return result.get("threads", [])
 
+    # ── Public Marketplace (no auth) ────────────────────────────────────────────
+
+    def list_marketplace(
+        self,
+        service: Optional[str] = None,
+        model: Optional[str] = None,
+        strength: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Browse all active vendor agents on the marketplace (no auth required).
+
+        Args:
+            service:  Filter by service_type, e.g. "image_generation"
+            model:    Filter by model_provider, e.g. "claude"
+            strength: Filter by strength tag, e.g. "lead_generation"
+        """
+        params: List[str] = []
+        if service:
+            params.append(f"service={requests.utils.quote(service)}")
+        if model:
+            params.append(f"model={requests.utils.quote(model)}")
+        if strength:
+            params.append(f"strength={requests.utils.quote(strength)}")
+        qs = "?" + "&".join(params) if params else ""
+        result = requests.get(
+            f"{self.base_url}/api/marketplace{qs}", timeout=self.timeout
+        )
+        if not result.ok:
+            return []
+        return result.json().get("agents", [])
+
+    def get_agent_profile(self, agent_id: str) -> Optional[Dict]:
+        """
+        Fetch a public agent profile including reviews (no auth required).
+        Returns None if the agent is not found.
+        """
+        resp = requests.get(
+            f"{self.base_url}/api/marketplace/{agent_id}", timeout=self.timeout
+        )
+        if resp.status_code == 404:
+            return None
+        if not resp.ok:
+            return None
+        return resp.json()
+
     # ── Helpers ─────────────────────────────────────────────────────────────────
 
     def wait_for_status(
