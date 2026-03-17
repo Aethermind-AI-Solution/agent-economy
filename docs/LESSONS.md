@@ -1,6 +1,6 @@
 # Lessons Learned — Agent Economy Platform
 
-Last updated: 2026-03-16
+Last updated: 2026-03-17
 
 ---
 
@@ -253,6 +253,48 @@ SELECT * FROM agent_rate_limits WHERE key = '{agent_id}' ORDER BY window_start D
 **Rule:** Audit log tables are append-only and only capture events going forward from when they were created. Pre-existing data has no retroactive event history. Document this clearly in UI — e.g., "State timeline available for transactions from [date]".
 
 ---
+
+---
+
+## Bug Fix Pass (2026-03-17)
+
+### Lesson 29: `contacted_at` overwrite — always check before setting timestamps
+
+**Bug:** `updateDraftPipeline()` had `update.contacted_at = new Date().toISOString()` unconditionally whenever stage moved away from `new`. Moving a lead from `contacted → replied → interested` reset the original contact timestamp each time.
+**Fix:** Read `contacted_at` from DB first. Only add it to the update payload when currently null.
+**Rule:** Any "first-touch" timestamp must be treated as write-once. Always read before write, or use SQL `COALESCE(contacted_at, now())`.
+
+---
+
+### Lesson 30: Non-null assertions (`!`) are silent lies — initialize instead
+
+**Bug:** `let scoredLeads: any[]` (no initializer) + `scoredLeads!.length` suppressed a valid TypeScript error. If the callback threw before assignment, `scoredLeads` was `undefined` at usage, producing a confusing TypeError.
+**Fix:** `let scoredLeads: ScoredLead[] = []` + remove `!`. An empty array is a safe default; add an explicit length guard after the step that populates it.
+**Rule:** Never use `!` to suppress an uninitialized variable warning. Initialize to a safe default and add a guard at the boundary where empty means "abort".
+
+---
+
+### Lesson 31: Dead code removal can silently kill live features
+
+**Bug:** Removing `findCompanies()` (the dead single-query fallback) also removed the `sdk.getMyEpisodes()` call inside it — silently breaking ResearchAgent's episode context injection. DataAgent and SalesAgent still loaded episodes; ResearchAgent didn't. No error, no warning.
+**Fix:** Restored `getMyEpisodes("lead_enrichment", 3)` inside `findCompaniesParallel()`, merging episode context with the meta-strategy before passing to sub-queries.
+**Rule:** When deleting a function, search for all features it provides — not just its call sites. Dead code may be the only place a feature is implemented. Use grep to confirm no behavior is lost.
+
+---
+
+### Lesson 32: Optional security checks are open security holes
+
+**Bug:** `if (adminPassword && key !== adminPassword)` — if `ADMIN_PASSWORD` env var is unset, the entire condition is false and the endpoint is completely open in production.
+**Fix:** Separate the "missing var" case from the "wrong key" case. Return 500 (misconfiguration) when the var is missing in production; allow in local dev for convenience.
+**Rule:** Any auth check that depends on an env var must treat the missing-var case as an error in production, not as "allow all". Pattern: `if (!secret) { if (prod) return 500; } else if (key !== secret) return 401`.
+
+---
+
+### Lesson 33: Slow auth paths need observability before they become incidents
+
+**Context:** The O(n) bcrypt scan in `auth.ts` fires for any agent with a null `api_key_prefix`. Each bcrypt comparison takes ~80ms. With 50 agents = 4 seconds per request. No log was emitted, so this was invisible in production.
+**Fix:** Added `console.warn(JSON.stringify({ event: "auth_slow_path_triggered" }))` before the loop.
+**Rule:** Any code path that degrades linearly with data size must emit a structured log when triggered. Slow paths that are silent become incidents when the data grows.
 
 ---
 
