@@ -13,42 +13,17 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
-import { AgentSDK, type Episode } from "../src/lib/sdk";
+import { AgentSDK } from "../src/lib/sdk";
 import { createThread, startThread, completeThread, failThread } from "../src/lib/threads";
 import { webSearch, formatSearchResults } from "../src/lib/web-search";
+import { makeLogger, parseJsonFromClaude, formatEpisodesForPrompt } from "./utils";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../.env.local"), quiet: true });
 
 const AGENT_NAME = "ResearchAgent";
-
-function ts() {
-  return new Date().toTimeString().slice(0, 8);
-}
-function log(msg: string) {
-  console.log(`[${AGENT_NAME} ${ts()}] ${msg}`);
-}
-
-function formatEpisodesForPrompt(episodes: Episode[]): string {
-  if (episodes.length === 0) return "";
-  const lines = episodes.map((ep, i) => {
-    const when = new Date(ep.created_at).toLocaleDateString("en-IN", {
-      day: "numeric", month: "short", year: "numeric",
-    });
-    return `Episode ${i + 1} [${when}] — ${ep.outcome.toUpperCase()}\n  ${ep.task_summary}`;
-  });
-  return ["\n\n---", "PAST EXPERIENCE (use to improve this response):", ...lines, "---"].join("\n");
-}
-
-function parseJsonFromClaude(text: string): any {
-  // Strip markdown code fences if Claude wraps the response
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/m, "")
-    .replace(/\s*```\s*$/m, "")
-    .trim();
-  return JSON.parse(cleaned);
-}
+const log = makeLogger(AGENT_NAME);
 
 async function decompose(query: string, anthropic: Anthropic): Promise<string[]> {
   try {
@@ -141,12 +116,15 @@ export async function findCompaniesParallel(
   agentId?: string,
   metaStrategy?: string
 ): Promise<Company[]> {
+  if (!process.env.TAVILY_API_KEY) {
+    log("WARNING: TAVILY_API_KEY not set — using Claude knowledge only (no live web search)");
+  }
   log(`Decomposing query into 5 parallel sub-queries...`);
   const subQueries = await decompose(query, anthropic);
 
   if (subQueries.length === 1) {
-    log("Decomposition failed — running single-query fallback");
-    return findCompanies(query, anthropic, sdk);
+    log("Decomposition failed — running single sub-query fallback");
+    return findSubQuery(query, anthropic, metaStrategy);
   }
 
   log(`Running ${subQueries.length} sub-queries in parallel...`);
@@ -233,66 +211,6 @@ export async function registerResearchAgent(
   return { sdk: new AgentSDK(platformUrl, api_key), agentId: agent.id };
 }
 
-export async function findCompanies(
-  query: string,
-  anthropic: Anthropic,
-  sdk?: AgentSDK,
-  metaStrategy?: string
-): Promise<Company[]> {
-  log(`Researching: "${query}"`);
-
-  let episodeContext = "";
-  if (sdk) {
-    try {
-      const episodes = await sdk.getMyEpisodes("lead_enrichment", 3);
-      episodeContext = formatEpisodesForPrompt(episodes);
-      if (episodes.length > 0) log(`Loaded ${episodes.length} past episode(s) for context`);
-    } catch (err: any) {
-      log(`Warning: Could not fetch episodes (${err.message}) — continuing without context`);
-    }
-  }
-
-  const response = await anthropic.messages.create({
-    model: "claude-opus-4-6",
-    max_tokens: 8192,
-    system: `You are a market research specialist with deep knowledge of the Indian business landscape.
-You identify real companies that would benefit from AI automation solutions.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}${metaStrategy ?? ""}`,
-    messages: [
-      {
-        role: "user",
-        content: `Find 30-50 Indian companies matching this criteria: "${query}"
-
-For each company, provide realistic details based on your knowledge of Indian businesses.
-Focus on companies with clear automation opportunities: manual data entry, large workforces doing
-repetitive tasks, outdated processes, or stated interest in digital transformation.
-
-Return a JSON array where each element has exactly these fields:
-- company_name: string (real or realistic Indian company name)
-- industry: string (specific industry sector)
-- website: string (likely website URL, e.g. "https://company.com")
-- why_they_need_ai: string (specific pain point or manual process this company faces)
-- source: string (e.g. "industry knowledge", "sector research", "public reports")
-
-Return ONLY the JSON array, nothing else.`,
-      },
-    ],
-  });
-
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
-
-  try {
-    const companies: Company[] = parseJsonFromClaude(text);
-    log(`Found ${companies.length} companies`);
-    return companies;
-  } catch (err: any) {
-    log(`Failed to parse Claude response: ${err.message}`);
-    log(`Raw response (first 200 chars): ${text.slice(0, 200)}`);
-    throw new Error("Claude returned invalid JSON for company list");
-  }
-}
-
 async function main() {
   const query = process.argv[2];
   if (!query) {
@@ -303,6 +221,14 @@ async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error("FATAL: ANTHROPIC_API_KEY not set in .env.local");
     process.exit(1);
+  }
+
+  if (!process.env.TAVILY_API_KEY) {
+    console.warn(
+      "WARNING: TAVILY_API_KEY not set. Web search is disabled — " +
+      "company data will be synthesized from Claude's training knowledge only. " +
+      "Add TAVILY_API_KEY to .env.local for live web search results."
+    );
   }
 
   const platformUrl = process.env.PLATFORM_URL ?? "http://localhost:3000";
