@@ -119,12 +119,28 @@ export async function findCompaniesParallel(
   if (!process.env.TAVILY_API_KEY) {
     log("WARNING: TAVILY_API_KEY not set — using Claude knowledge only (no live web search)");
   }
+
+  // Load past episode context (task_type matches the service_type this agent operates on)
+  let episodeContext = "";
+  if (sdk) {
+    try {
+      const episodes = await sdk.getMyEpisodes("lead_enrichment", 3);
+      episodeContext = formatEpisodesForPrompt(episodes);
+      if (episodes.length > 0) log(`Loaded ${episodes.length} past episode(s) for context`);
+    } catch (err: any) {
+      log(`Warning: Could not fetch episodes (${err.message}) — continuing without context`);
+    }
+  }
+
   log(`Decomposing query into 5 parallel sub-queries...`);
   const subQueries = await decompose(query, anthropic);
 
+  // Merge episode context into meta strategy string passed to each sub-query
+  const combinedContext = [metaStrategy, episodeContext].filter(Boolean).join("\n") || undefined;
+
   if (subQueries.length === 1) {
     log("Decomposition failed — running single sub-query fallback");
-    return findSubQuery(query, anthropic, metaStrategy);
+    return findSubQuery(query, anthropic, combinedContext);
   }
 
   log(`Running ${subQueries.length} sub-queries in parallel...`);
@@ -139,7 +155,7 @@ export async function findCompaniesParallel(
       }
       try {
         log(`Sub-query ${i + 1}/5: "${subQuery.slice(0, 60)}"`);
-        const companies = await findSubQuery(subQuery, anthropic, metaStrategy);
+        const companies = await findSubQuery(subQuery, anthropic, combinedContext);
         log(`Sub-query ${i + 1}/5 done: ${companies.length} companies`);
         if (threadId) completeThread(threadId, { count: companies.length }).catch(() => {});
         return companies;
