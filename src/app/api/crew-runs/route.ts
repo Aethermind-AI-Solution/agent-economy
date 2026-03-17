@@ -58,7 +58,14 @@ export async function POST(req: NextRequest) {
   }
 
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (adminPassword && key !== adminPassword) {
+  if (!adminPassword) {
+    // In production, missing ADMIN_PASSWORD is a misconfiguration — refuse all requests
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+      console.error("FATAL: ADMIN_PASSWORD not set — refusing crew-run trigger");
+      return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+    }
+    // Local dev without password: allow (convenience)
+  } else if (key !== adminPassword) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
