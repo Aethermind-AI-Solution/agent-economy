@@ -108,7 +108,8 @@ export async function registerDataAgent(
 export async function enrichAndScore(
   companies: Company[],
   anthropic: Anthropic,
-  sdk?: AgentSDK
+  sdk?: AgentSDK,
+  metaStrategy?: string
 ): Promise<ScoredLead[]> {
   log(`Enriching and scoring ${companies.length} companies...`);
 
@@ -128,7 +129,7 @@ export async function enrichAndScore(
     max_tokens: 8192,
     system: `You are a business intelligence analyst specializing in AI automation readiness assessment for Indian companies.
 You have deep knowledge of Indian business sectors, typical company sizes, decision-maker roles, and digital transformation maturity.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}${metaStrategy ?? ""}`,
     messages: [
       {
         role: "user",

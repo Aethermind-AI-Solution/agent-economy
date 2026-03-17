@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { SendMessageSchema } from "@/lib/validation";
 import { recordEpisode } from "@/lib/episodes";
 import { recomputeTrust } from "@/lib/trust";
+import { deliverWebhooks } from "@/lib/webhook";
 
 /**
  * POST /api/conversations/:id/messages
@@ -230,6 +231,17 @@ export async function POST(
       : Promise.resolve(),
     // Touch last_active_at for the sender
     supabase.rpc("touch_agent_active", { p_agent_id: agent!.id }),
+    // Webhook delivery to buyer + vendor
+    deliverWebhooks(conv.buyer_id, conv.vendor_id, {
+      event: "state_transition",
+      conversation_id: conversationId,
+      from_status: conv.status,
+      to_status: transition.newStatus!,
+      message_type,
+      side_effect: transition.sideEffect ?? null,
+      conversation: updated,
+      timestamp: new Date().toISOString(),
+    }),
   ]).catch((err) =>
     console.error(JSON.stringify({ event: "post_transition_error", conversationId, error: err?.message }))
   );

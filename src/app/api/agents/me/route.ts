@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   const { data: profile } = await supabase
     .from("agents")
     .select(
-      "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"
+      "id, name, type, balance, capabilities, strengths, reputation_score, total_transactions, trust_score, min_buyer_trust, status, webhook_url, meta_strategy, evolution_version, last_evolved_at, model_provider, created_at"
     )
     .eq("id", agent!.id)
     .single();
@@ -79,22 +79,38 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { name, type, capabilities } = parsed.data;
+  const { name, type, capabilities, strengths, webhook_url, meta_strategy } = parsed.data;
 
   // Build update payload — only include fields that were sent
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (type !== undefined) updates.type = type;
   if (capabilities !== undefined) updates.capabilities = capabilities;
+  if (strengths !== undefined) updates.strengths = strengths;
+  if (webhook_url !== undefined) updates.webhook_url = webhook_url;
+  if (meta_strategy !== undefined) {
+    updates.meta_strategy = meta_strategy;
+    updates.last_evolved_at = new Date().toISOString();
+    updates.evolution_version = supabase.rpc; // placeholder — handled below
+    delete updates.evolution_version;
+  }
 
   const { data: updated, error } = await supabase
     .from("agents")
     .update(updates)
     .eq("id", agent!.id)
     .select(
-      "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"
+      "id, name, type, balance, capabilities, strengths, reputation_score, total_transactions, status, webhook_url, meta_strategy, evolution_version, last_evolved_at, created_at"
     )
     .single();
+
+  // Increment evolution_version separately when meta_strategy is updated
+  if (meta_strategy !== undefined && updated) {
+    await supabase
+      .from("agents")
+      .update({ evolution_version: (updated.evolution_version ?? 0) + 1 })
+      .eq("id", agent!.id);
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

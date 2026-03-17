@@ -107,7 +107,8 @@ export async function registerSalesAgent(
 export async function draftOutreach(
   scoredLeads: ScoredLead[],
   anthropic: Anthropic,
-  sdk?: AgentSDK
+  sdk?: AgentSDK,
+  metaStrategy?: string
 ): Promise<OutreachDraft[]> {
   const top10 = scoredLeads.slice(0, 10);
   log(`Drafting outreach for top ${top10.length} leads...`);
@@ -131,7 +132,7 @@ Aethermind helps businesses automate manual processes, reduce operational costs,
 Services include: intelligent document processing, workflow automation, AI-powered data pipelines,
 custom ML models, and conversational AI for customer service.
 Your outreach messages are professional, specific to each company, and genuinely helpful — never generic or pushy.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}${metaStrategy ?? ""}`,
     messages: [
       {
         role: "user",

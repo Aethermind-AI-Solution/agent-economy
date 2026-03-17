@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, type, capabilities, agent_role, model_provider, strengths } = parsed.data;
+  const { name, type, capabilities, agent_role, model_provider, strengths, webhook_url } = parsed.data;
 
   // Generate API key
   const rawKey = `pk_${type}_${name.toLowerCase().replace(/[^a-z0-9]/g, "")}_${crypto.randomBytes(12).toString("hex")}`;
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       agent_role,
       model_provider,
       strengths,
+      webhook_url: webhook_url ?? null,
     })
     .select(
       "id, name, type, balance, capabilities, reputation_score, total_transactions, status, created_at"

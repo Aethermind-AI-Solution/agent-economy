@@ -75,7 +75,7 @@ async function decompose(query: string, anthropic: Anthropic): Promise<string[]>
   }
 }
 
-async function findSubQuery(subQuery: string, anthropic: Anthropic): Promise<Company[]> {
+async function findSubQuery(subQuery: string, anthropic: Anthropic, metaStrategy?: string): Promise<Company[]> {
   const searchResults = await webSearch(subQuery, 5);
   const hasResults = searchResults.length > 0;
   if (hasResults) {
@@ -121,7 +121,7 @@ Return ONLY the JSON array, nothing else.`;
     max_tokens: 4096,
     system: `You are a market research specialist with deep knowledge of the Indian business landscape.
 You identify real companies that would benefit from AI automation solutions.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${metaStrategy ?? ""}`,
     messages: [{ role: "user", content: userContent }],
   });
 
@@ -138,7 +138,8 @@ export async function findCompaniesParallel(
   query: string,
   anthropic: Anthropic,
   sdk?: AgentSDK,
-  agentId?: string
+  agentId?: string,
+  metaStrategy?: string
 ): Promise<Company[]> {
   log(`Decomposing query into 5 parallel sub-queries...`);
   const subQueries = await decompose(query, anthropic);
@@ -160,7 +161,7 @@ export async function findCompaniesParallel(
       }
       try {
         log(`Sub-query ${i + 1}/5: "${subQuery.slice(0, 60)}"`);
-        const companies = await findSubQuery(subQuery, anthropic);
+        const companies = await findSubQuery(subQuery, anthropic, metaStrategy);
         log(`Sub-query ${i + 1}/5 done: ${companies.length} companies`);
         if (threadId) completeThread(threadId, { count: companies.length }).catch(() => {});
         return companies;
@@ -235,7 +236,8 @@ export async function registerResearchAgent(
 export async function findCompanies(
   query: string,
   anthropic: Anthropic,
-  sdk?: AgentSDK
+  sdk?: AgentSDK,
+  metaStrategy?: string
 ): Promise<Company[]> {
   log(`Researching: "${query}"`);
 
@@ -255,7 +257,7 @@ export async function findCompanies(
     max_tokens: 8192,
     system: `You are a market research specialist with deep knowledge of the Indian business landscape.
 You identify real companies that would benefit from AI automation solutions.
-Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}`,
+Always respond with valid JSON only — no markdown, no explanations, no preamble.${episodeContext}${metaStrategy ?? ""}`,
     messages: [
       {
         role: "user",

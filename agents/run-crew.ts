@@ -28,6 +28,7 @@ import { registerResearchAgent, findCompaniesParallel } from "./research-agent";
 import { registerDataAgent, enrichAndScore } from "./data-agent";
 import { registerSalesAgent, draftOutreach } from "./sales-agent";
 import { createCrewRun, completeCrewRun, failCrewRun, saveDrafts } from "../src/lib/crew-runs";
+import { shouldEvolve, evolveAgent, getMetaStrategy, formatMetaStrategy } from "../src/lib/evolution";
 
 const CREW_NAME = "RunCrew";
 
@@ -159,11 +160,21 @@ async function main() {
     log(`DataAgent:     ${data.agentId}`);
     log(`SalesAgent:    ${sales.agentId}`);
 
+    // ── Fetch evolved strategies for each agent ────────────────────────────────
+    const [researchStrategy, dataStrategy, salesStrategy] = await Promise.all([
+      getMetaStrategy(research.agentId),
+      getMetaStrategy(data.agentId),
+      getMetaStrategy(sales.agentId),
+    ]);
+    if (researchStrategy) log(`ResearchAgent using evolved strategy v${researchStrategy.version}`);
+    if (dataStrategy)    log(`DataAgent using evolved strategy v${dataStrategy.version}`);
+    if (salesStrategy)   log(`SalesAgent using evolved strategy v${salesStrategy.version}`);
+
     // ── Step 1: Research ───────────────────────────────────────────────────────
     log("\n" + "=".repeat(50));
     log("Step 1: Research");
     log("=".repeat(50));
-    const companies = await findCompaniesParallel(query, anthropic, research.sdk, research.agentId);
+    const companies = await findCompaniesParallel(query, anthropic, research.sdk, research.agentId, formatMetaStrategy(researchStrategy));
     log(`Found ${companies.length} companies`);
 
     // ── Handoff 1: ResearchAgent → DataAgent ──────────────────────────────────
@@ -180,7 +191,7 @@ async function main() {
       serviceType: "lead_enrichment",
       rfqPayload: { query, companies },
       work: async () => {
-        scoredLeads = await enrichAndScore(companies, anthropic, data.sdk);
+        scoredLeads = await enrichAndScore(companies, anthropic, data.sdk, formatMetaStrategy(dataStrategy));
         return {
           artifacts: [{ type: "scored_leads", data: scoredLeads }],
         };
@@ -209,7 +220,7 @@ async function main() {
       serviceType: "outreach_drafting",
       rfqPayload: { scoredLeads: scoredLeads! },
       work: async () => {
-        outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk);
+        outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk, formatMetaStrategy(salesStrategy));
         return {
           artifacts: [{ type: "outreach_drafts", data: outreachDrafts }],
         };
@@ -228,6 +239,16 @@ async function main() {
       ]);
       log(`Run saved: ${runId}`);
     }
+
+    // ── Trigger evolution (fire-and-forget, non-blocking) ──────────────────────
+    Promise.all([
+      shouldEvolve(research.agentId).then(yes => yes ? evolveAgent(research.agentId) : null),
+      shouldEvolve(data.agentId).then(yes => yes ? evolveAgent(data.agentId) : null),
+      shouldEvolve(sales.agentId).then(yes => yes ? evolveAgent(sales.agentId) : null),
+    ]).then(results => {
+      const evolved = results.filter(Boolean);
+      if (evolved.length > 0) log(`${evolved.length} agent(s) evolved after this run`);
+    }).catch(() => {});
 
     // ── Print Results ──────────────────────────────────────────────────────────
     log("\n" + "=".repeat(50));

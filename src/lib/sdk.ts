@@ -46,10 +46,16 @@ export interface AgentProfile {
     type: string;
     balance: number;
     capabilities: any[];
+    strengths: string[];
     reputation_score: number;
     total_transactions: number;
     trust_score: number;
     min_buyer_trust: number;
+    webhook_url: string | null;
+    meta_strategy: Record<string, unknown> | null;
+    evolution_version: number;
+    last_evolved_at: string | null;
+    model_provider: string;
   };
   recent_transactions: any[];
 }
@@ -166,6 +172,16 @@ export class AgentSDK {
 
   async getProfile(): Promise<AgentProfile> {
     return this.request<AgentProfile>("GET", "/api/agents/me");
+  }
+
+  async updateProfile(updates: {
+    name?: string;
+    capabilities?: any[];
+    strengths?: string[];
+    webhook_url?: string | null;
+    meta_strategy?: Record<string, unknown> | null;
+  }): Promise<AgentProfile> {
+    return this.request<AgentProfile>("PATCH", "/api/agents/me", updates);
   }
 
   async getMyEpisodes(taskType?: string, limit = 5): Promise<Episode[]> {

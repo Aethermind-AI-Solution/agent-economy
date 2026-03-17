@@ -22,6 +22,7 @@ export const RegisterSchema = z.object({
   agent_role: z.enum(["standalone", "orchestrator", "worker"]).optional().default("standalone"),
   model_provider: z.enum(["claude", "openai", "custom", "any"]).optional().default("claude"),
   strengths: z.array(z.string()).optional().default([]),
+  webhook_url: z.string().url().optional(),
 });
 
 export const CreateConversationSchema = z.object({
@@ -43,11 +44,17 @@ export const UpdateAgentSchema = z
     name: z.string().min(1).max(100).optional(),
     type: z.enum(["buyer", "vendor", "both"]).optional(),
     capabilities: z.array(z.unknown()).optional(),
+    strengths: z.array(z.string()).optional(),
+    webhook_url: z.string().url().nullable().optional(),
+    meta_strategy: z.record(z.unknown()).nullable().optional(),
   })
   .refine(
     (data) =>
       data.name !== undefined ||
       data.type !== undefined ||
-      data.capabilities !== undefined,
-    { message: "No fields to update. Allowed: name, type, capabilities" }
+      data.capabilities !== undefined ||
+      data.strengths !== undefined ||
+      data.webhook_url !== undefined ||
+      data.meta_strategy !== undefined,
+    { message: "No fields to update. Allowed: name, type, capabilities, strengths, webhook_url, meta_strategy" }
   );
