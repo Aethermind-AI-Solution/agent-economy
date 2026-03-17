@@ -26,18 +26,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AgentSDK } from "../src/lib/sdk";
 import { registerResearchAgent, findCompaniesParallel } from "./research-agent";
 import { registerDataAgent, enrichAndScore } from "./data-agent";
+import type { ScoredLead } from "./data-agent";
 import { registerSalesAgent, draftOutreach } from "./sales-agent";
+import type { OutreachDraft } from "./sales-agent";
 import { createCrewRun, completeCrewRun, failCrewRun, saveDrafts } from "../src/lib/crew-runs";
 import { shouldEvolve, evolveAgent, getMetaStrategy, formatMetaStrategy } from "../src/lib/evolution";
+import { makeLogger } from "./utils";
 
 const CREW_NAME = "RunCrew";
-
-function ts() {
-  return new Date().toTimeString().slice(0, 8);
-}
-function log(msg: string) {
-  console.log(`[${CREW_NAME} ${ts()}] ${msg}`);
-}
+const log = makeLogger(CREW_NAME);
 
 /**
  * Drive a full platform transaction between buyer and vendor agents.
@@ -182,7 +179,7 @@ async function main() {
     log("Step 2: Enrichment (via platform)");
     log("=".repeat(50));
 
-    let scoredLeads: any[];
+    let scoredLeads: ScoredLead[] = [];
     await platformHandoff({
       label: "ResearchAgent → DataAgent",
       buyerSdk: research.sdk,
@@ -198,12 +195,16 @@ async function main() {
       },
     });
 
-    log(`Top ${scoredLeads!.length} leads scored:`);
-    for (const lead of scoredLeads!.slice(0, 5)) {
+    if (scoredLeads.length === 0) {
+      throw new Error("DataAgent returned empty scored leads — aborting");
+    }
+
+    log(`Top ${scoredLeads.length} leads scored:`);
+    for (const lead of scoredLeads.slice(0, 5)) {
       log(`  [${lead.score}/10] ${lead.company_name} — ${lead.industry}`);
     }
-    if (scoredLeads!.length > 5) {
-      log(`  ... and ${scoredLeads!.length - 5} more`);
+    if (scoredLeads.length > 5) {
+      log(`  ... and ${scoredLeads.length - 5} more`);
     }
 
     // ── Handoff 2: DataAgent → SalesAgent ─────────────────────────────────────
@@ -211,16 +212,16 @@ async function main() {
     log("Step 3: Outreach Drafting (via platform)");
     log("=".repeat(50));
 
-    let outreachDrafts: any[];
+    let outreachDrafts: OutreachDraft[] = [];
     await platformHandoff({
       label: "DataAgent → SalesAgent",
       buyerSdk: data.sdk,
       vendorSdk: sales.sdk,
       vendorAgentId: sales.agentId,
       serviceType: "outreach_drafting",
-      rfqPayload: { scoredLeads: scoredLeads! },
+      rfqPayload: { scoredLeads },
       work: async () => {
-        outreachDrafts = await draftOutreach(scoredLeads!, anthropic, sales.sdk, formatMetaStrategy(salesStrategy));
+        outreachDrafts = await draftOutreach(scoredLeads, anthropic, sales.sdk, formatMetaStrategy(salesStrategy));
         return {
           artifacts: [{ type: "outreach_drafts", data: outreachDrafts }],
         };
@@ -232,10 +233,10 @@ async function main() {
       await Promise.all([
         completeCrewRun(runId, {
           company_count: companies.length,
-          lead_count: scoredLeads!.length,
-          draft_count: outreachDrafts!.length,
+          lead_count: scoredLeads.length,
+          draft_count: outreachDrafts.length,
         }),
-        saveDrafts(runId, outreachDrafts!),
+        saveDrafts(runId, outreachDrafts),
       ]);
       log(`Run saved: ${runId}`);
     }
@@ -252,11 +253,11 @@ async function main() {
 
     // ── Print Results ──────────────────────────────────────────────────────────
     log("\n" + "=".repeat(50));
-    log(`OUTREACH DRAFTS (${outreachDrafts!.length} leads)`);
+    log(`OUTREACH DRAFTS (${outreachDrafts.length} leads)`);
     log("=".repeat(50));
 
-    for (let i = 0; i < outreachDrafts!.length; i++) {
-      const draft = outreachDrafts![i];
+    for (let i = 0; i < outreachDrafts.length; i++) {
+      const draft = outreachDrafts[i];
       console.log(`\n${"─".repeat(60)}`);
       console.log(`#${i + 1}  ${draft.company_name}  [Score: ${draft.score}/10]`);
       console.log(`    Decision Maker: ${draft.decision_maker}`);
@@ -275,7 +276,7 @@ async function main() {
 
     console.log(`\n${"=".repeat(60)}`);
     log("Crew run complete.");
-    log(`Review the ${outreachDrafts!.length} drafts above, edit as needed, then send manually.`);
+    log(`Review the ${outreachDrafts.length} drafts above, edit as needed, then send manually.`);
   } catch (err: any) {
     if (runId) await failCrewRun(runId, err.message);
     throw err;
