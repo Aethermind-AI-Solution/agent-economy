@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request", details: parsed.error.flatten() },
-      { status: 400 }
+      { status: 422 }
     );
   }
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   if (vendor.type === "buyer") {
     return NextResponse.json(
       { error: "Target agent is not a vendor" },
-      { status: 400 }
+      { status: 422 }
     );
   }
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   if (!offersService) {
     return NextResponse.json(
       { error: `Vendor does not offer service: ${service_type}` },
-      { status: 400 }
+      { status: 422 }
     );
   }
 

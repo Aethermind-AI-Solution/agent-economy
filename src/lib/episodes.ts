@@ -1,5 +1,27 @@
 import { supabase } from "./supabase";
 
+interface DeliveryArtifact {
+  type: string;
+  data: Record<string, unknown>[];
+}
+
+interface DeliveryPayload {
+  artifacts?: DeliveryArtifact[];
+  [key: string]: unknown;
+}
+
+interface ConvRecord {
+  id: string;
+  buyer_id: string;
+  vendor_id: string;
+  service_type: string;
+  status: string;
+  escrow_amount: number | null;
+  rfq_payload: Record<string, unknown> | null;
+  offer_payload: Record<string, unknown> | null;
+  delivery_payload: DeliveryPayload | null;
+}
+
 export interface Episode {
   id: string;
   agent_id: string;
@@ -13,14 +35,14 @@ export interface Episode {
   created_at: string;
 }
 
-function buildTaskSummary(conv: any, outcome: "success" | "failure"): string {
+function buildTaskSummary(conv: ConvRecord, outcome: "success" | "failure"): string {
   const { service_type, rfq_payload: rfq, offer_payload: offer, delivery_payload: del } = conv;
   if (outcome === "failure") {
     return `'${service_type}' task DISPUTED. ${del ? "Partial delivery received." : "No delivery made."}`;
   }
   try {
     if (service_type === "lead_enrichment") {
-      const data = del?.artifacts?.[0]?.data ?? [];
+      const data = (del?.artifacts?.[0]?.data ?? []) as Record<string, unknown>[];
       const top = data[0];
       return [
         `Enriched company list from query: "${rfq?.query ?? "unknown"}".`,
@@ -29,7 +51,7 @@ function buildTaskSummary(conv: any, outcome: "success" | "failure"): string {
       ].filter(Boolean).join(" ");
     }
     if (service_type === "outreach_drafting") {
-      const data = del?.artifacts?.[0]?.data ?? [];
+      const data = (del?.artifacts?.[0]?.data ?? []) as Record<string, unknown>[];
       const top = data[0];
       return [
         `Drafted outreach for ${data.length} leads.`,
@@ -47,16 +69,16 @@ function buildTaskSummary(conv: any, outcome: "success" | "failure"): string {
   }
 }
 
-function buildArtifactsSummary(conv: any): Record<string, unknown> | null {
-  const del = conv.delivery_payload as any;
+function buildArtifactsSummary(conv: ConvRecord): Record<string, unknown> | null {
+  const del = conv.delivery_payload;
   if (!del) return null;
   try {
     if (conv.service_type === "lead_enrichment") {
-      const data = del?.artifacts?.[0]?.data ?? [];
+      const data = (del.artifacts?.[0]?.data ?? []) as Record<string, unknown>[];
       return {
         type: "scored_leads",
         total_count: data.length,
-        top3: data.slice(0, 3).map((l: any) => ({
+        top3: data.slice(0, 3).map((l) => ({
           company_name: l.company_name,
           score: l.score,
           industry: l.industry,
@@ -64,18 +86,18 @@ function buildArtifactsSummary(conv: any): Record<string, unknown> | null {
       };
     }
     if (conv.service_type === "outreach_drafting") {
-      const data = del?.artifacts?.[0]?.data ?? [];
+      const data = (del.artifacts?.[0]?.data ?? []) as Record<string, unknown>[];
       return {
         type: "outreach_drafts",
         total_count: data.length,
-        top3: data.slice(0, 3).map((d: any) => ({
+        top3: data.slice(0, 3).map((d) => ({
           company_name: d.company_name,
           subject_line: d.subject_line,
           score: d.score,
         })),
       };
     }
-    return del;
+    return del as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -85,7 +107,7 @@ function buildArtifactsSummary(conv: any): Record<string, unknown> | null {
  * Record two episode rows (buyer + vendor) for a completed or disputed conversation.
  * Never throws — fire-and-forget safe.
  */
-export async function recordEpisode(conv: any): Promise<void> {
+export async function recordEpisode(conv: ConvRecord): Promise<void> {
   const outcome: "success" | "failure" = conv.status === "completed" ? "success" : "failure";
   const summary = buildTaskSummary(conv, outcome);
   const artifacts = outcome === "success" ? buildArtifactsSummary(conv) : null;

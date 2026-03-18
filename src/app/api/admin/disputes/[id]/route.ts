@@ -60,7 +60,7 @@ export async function POST(
   if (action !== "release" && action !== "refund") {
     return NextResponse.json(
       { error: "action must be 'release' or 'refund'" },
-      { status: 400 }
+      { status: 422 }
     );
   }
 

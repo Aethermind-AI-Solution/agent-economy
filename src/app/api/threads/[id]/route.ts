@@ -37,7 +37,7 @@ export async function PATCH(
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request", details: parsed.error.flatten() },
-      { status: 400 }
+      { status: 422 }
     );
   }
 

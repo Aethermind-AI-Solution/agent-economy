@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { recomputeTrust } from "@/lib/trust";
 
 /**
  * GET /api/cron/expire-conversations
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     .update({ status: "expired", updated_at: now })
     .in("status", ["rfq_sent", "offer_sent", "delivered"])
     .or(`expires_at.lt.${now},and(expires_at.is.null,created_at.lt.${oneHourAgo})`)
-    .select("id");
+    .select("id, buyer_id, vendor_id");
 
   if (err1) {
     console.error("[cron] error expiring safe conversations:", err1.message);
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     .update({ status: "expired", escrow_frozen: true, updated_at: now })
     .eq("status", "accepted")
     .or(`expires_at.lt.${now},and(expires_at.is.null,created_at.lt.${oneHourAgo})`)
-    .select("id");
+    .select("id, buyer_id, vendor_id");
 
   if (err2) {
     console.error("[cron] error expiring accepted conversations:", err2.message);
@@ -71,6 +72,17 @@ export async function GET(req: NextRequest) {
 
   if (err4) {
     console.error("[cron] error cleaning idempotency cache:", err4.message);
+  }
+
+  // Recompute trust for all participants in expired conversations (fire-and-forget)
+  const allExpired = [...(expiredSafe ?? []), ...(expiredAccepted ?? [])];
+  for (const conv of allExpired) {
+    recomputeTrust(conv.buyer_id).catch((e: Error) =>
+      console.error("[cron] trust recompute failed for buyer", conv.buyer_id, e.message)
+    );
+    recomputeTrust(conv.vendor_id).catch((e: Error) =>
+      console.error("[cron] trust recompute failed for vendor", conv.vendor_id, e.message)
+    );
   }
 
   const safeCount = expiredSafe?.length ?? 0;
