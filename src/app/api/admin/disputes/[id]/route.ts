@@ -111,12 +111,18 @@ export async function POST(
       .eq("id", conversationId);
 
     const redirectUrl = new URL(req.url);
-    // If form submission, redirect back to dashboard
+    // If form submission, redirect back to dashboard.
+    // Use HttpOnly cookie instead of query param — password must not appear in URL
+    // (browser history, server access logs, and Referer headers would expose it).
     if (!contentType.includes("application/json")) {
-      const adminKey = key;
-      return NextResponse.redirect(
-        new URL(`/?key=${adminKey}`, redirectUrl.origin)
-      );
+      const res = NextResponse.redirect(new URL("/", redirectUrl.origin));
+      res.cookies.set("admin_key", key!, {
+        httpOnly: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 60 * 60, // 1 hour
+      });
+      return res;
     }
 
     return NextResponse.json({
@@ -141,10 +147,14 @@ export async function POST(
 
     const redirectUrl = new URL(req.url);
     if (!contentType.includes("application/json")) {
-      const adminKey = key;
-      return NextResponse.redirect(
-        new URL(`/?key=${adminKey}`, redirectUrl.origin)
-      );
+      const res = NextResponse.redirect(new URL("/", redirectUrl.origin));
+      res.cookies.set("admin_key", key!, {
+        httpOnly: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 60 * 60,
+      });
+      return res;
     }
 
     return NextResponse.json({

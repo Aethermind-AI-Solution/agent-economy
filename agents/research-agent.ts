@@ -157,11 +157,15 @@ export async function findCompaniesParallel(
         log(`Sub-query ${i + 1}/5: "${subQuery.slice(0, 60)}"`);
         const companies = await findSubQuery(subQuery, anthropic, combinedContext);
         log(`Sub-query ${i + 1}/5 done: ${companies.length} companies`);
-        if (threadId) completeThread(threadId, { count: companies.length }).catch(() => {});
+        if (threadId) completeThread(threadId, { count: companies.length }).catch((e: Error) =>
+          log(`Warning: could not mark thread ${threadId} complete: ${e.message}`)
+        );
         return companies;
       } catch (err: any) {
         log(`Sub-query ${i + 1}/5 failed: ${err.message}`);
-        if (threadId) failThread(threadId, err.message).catch(() => {});
+        if (threadId) failThread(threadId, err.message).catch((e: Error) =>
+          log(`Warning: could not mark thread ${threadId} failed: ${e.message}`)
+        );
         return [] as Company[];
       }
     })

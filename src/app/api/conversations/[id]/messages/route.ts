@@ -214,11 +214,16 @@ export async function POST(
     side_effect: transition.sideEffect ?? null,
   }).then(() => {}, ffLog("audit_log"));
 
-  // Idempotency cache
+  // Idempotency cache — store minimal fingerprint, not full body (bodies can be large)
   if (idempotencyKey) {
     supabase.from("idempotency_cache").insert({
       key: `${conversationId}:${agent!.id}:${message_type}:${idempotencyKey}`,
-      response: responseBody,
+      response: {
+        conversation_id: conversationId,
+        from_status: conv.status,
+        to_status: transition.newStatus,
+        message_type,
+      },
     }).then(() => {}, ffLog("idempotency_cache"));
   }
 

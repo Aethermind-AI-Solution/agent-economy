@@ -249,7 +249,7 @@ async function main() {
     ]).then(results => {
       const evolved = results.filter(Boolean);
       if (evolved.length > 0) log(`${evolved.length} agent(s) evolved after this run`);
-    }).catch(() => {});
+    }).catch((e: Error) => log(`Warning: evolution step failed: ${e.message}`));
 
     // ── Print Results ──────────────────────────────────────────────────────────
     log("\n" + "=".repeat(50));

@@ -119,7 +119,9 @@ export async function POST(
   }
 
   // Recompute trust score (fire-and-forget — trust depends on reputation)
-  recomputeTrust(revieweeId).catch(() => {});
+  recomputeTrust(revieweeId).catch((err: Error) =>
+    console.error(JSON.stringify({ event: "trust_recompute_error", reviewee_id: revieweeId, error: err.message }))
+  );
 
   return NextResponse.json({ review }, { status: 201 });
 }

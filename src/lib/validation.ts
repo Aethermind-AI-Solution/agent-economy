@@ -77,6 +77,15 @@ export const SendMessageSchema = z.object({
   payload: z.record(z.unknown()).optional().default({}),
 });
 
+/** Validated shape for agent meta_strategy (set manually or by evolveAgent) */
+export const MetaStrategySchema = z.object({
+  learned_heuristics: z.array(z.string()).default([]),
+  avoid_patterns: z.array(z.string()).default([]),
+  prompt_additions: z.string().default(""),
+  version: z.number().int().nonnegative().optional(),
+  evolved_at: z.string().optional(),
+});
+
 export const UpdateAgentSchema = z
   .object({
     name: z.string().min(1).max(100).optional(),
@@ -84,7 +93,7 @@ export const UpdateAgentSchema = z
     capabilities: z.array(CapabilitySchema).optional(),
     strengths: z.array(z.string()).optional(),
     webhook_url: safeWebhookUrl.nullable().optional(),
-    meta_strategy: z.record(z.unknown()).nullable().optional(),
+    meta_strategy: MetaStrategySchema.nullable().optional(),
   })
   .refine(
     (data) =>
