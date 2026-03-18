@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import type { CrewRun, CrewDraft, PipelineStatus } from "@/lib/crew-runs";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +62,9 @@ export default async function CrewRunDetail({
   searchParams: Promise<{ key?: string }>;
 }) {
   const { id } = await params;
-  const { key } = await searchParams;
+  const { key: keyFromParams } = await searchParams;
+  const cookieStore = await cookies();
+  const key = keyFromParams ?? cookieStore.get("admin_key")?.value;
 
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminPassword && key !== adminPassword) {

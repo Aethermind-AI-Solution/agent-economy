@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 // Disable Next.js caching — always fetch live data on every request
 export const dynamic = "force-dynamic";
@@ -199,7 +200,10 @@ export default async function Dashboard({
 }: {
   searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string; crew_msg?: string }>;
 }) {
-  const { key, status, sort, dir, page, crew_msg } = await searchParams;
+  const { key: keyParam, status, sort, dir, page, crew_msg } = await searchParams;
+  // Accept key from query param (direct URL access) or HttpOnly cookie (post-dispute redirect)
+  const cookieStore = await cookies();
+  const key = keyParam ?? cookieStore.get("admin_key")?.value;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (adminPassword && key !== adminPassword) {

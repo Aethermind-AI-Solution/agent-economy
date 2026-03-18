@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import type { PipelineStatus } from "@/lib/crew-runs";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,9 @@ export default async function PipelinePage({
 }: {
   searchParams: Promise<{ key?: string; stage?: string }>;
 }) {
-  const { key, stage } = await searchParams;
+  const { key: keyFromParams, stage } = await searchParams;
+  const cookieStore = await cookies();
+  const key = keyFromParams ?? cookieStore.get("admin_key")?.value;
 
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminPassword && key !== adminPassword) {
