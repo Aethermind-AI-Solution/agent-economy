@@ -102,6 +102,7 @@ export async function saveDrafts(
   const { error } = await supabase.from("crew_run_drafts").insert(rows);
   if (error) {
     console.error(JSON.stringify({ event: "save_drafts_error", run_id: runId, error: error.message }));
+    throw new Error(`Failed to save drafts for run ${runId}: ${error.message}`);
   }
 }
 

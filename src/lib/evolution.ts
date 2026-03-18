@@ -10,7 +10,14 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { supabase } from "./supabase";
+
+const MetaStrategyResponseSchema = z.object({
+  learned_heuristics: z.array(z.string()).default([]),
+  avoid_patterns: z.array(z.string()).default([]),
+  prompt_additions: z.string().default(""),
+});
 
 const EVOLUTION_THRESHOLD = 3; // episodes since last evolution to trigger
 
@@ -103,13 +110,14 @@ Only output the JSON object, nothing else.`,
       }],
     });
 
-    const text = response.content[0].type === "text" ? response.content[0].text.trim() : "";
-    const parsed = JSON.parse(text.replace(/^```json\n?/, "").replace(/\n?```$/, ""));
+    const rawText = response.content[0].type === "text" ? response.content[0].text.trim() : "";
+    const cleaned = rawText.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
+    const parsed = MetaStrategyResponseSchema.parse(JSON.parse(cleaned));
 
     const newStrategy: MetaStrategy = {
-      learned_heuristics: parsed.learned_heuristics ?? [],
-      avoid_patterns: parsed.avoid_patterns ?? [],
-      prompt_additions: parsed.prompt_additions ?? "",
+      learned_heuristics: parsed.learned_heuristics,
+      avoid_patterns: parsed.avoid_patterns,
+      prompt_additions: parsed.prompt_additions,
       version: currentVersion + 1,
       evolved_at: new Date().toISOString(),
     };

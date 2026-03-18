@@ -1,4 +1,8 @@
 export function csvCell(value: unknown): string {
-  const s = String(value ?? "").replace(/"/g, '""');
+  let s = String(value ?? "").replace(/"/g, '""');
+  // Prevent CSV formula injection (Excel/Google Sheets execute cells starting with = + - @ |)
+  if (/^[=+\-@|]/.test(s)) {
+    s = "'" + s;
+  }
   return `"${s}"`;
 }

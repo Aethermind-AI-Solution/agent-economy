@@ -78,11 +78,12 @@ export async function authenticate(
   for (const agent of agents) {
     const match = await bcrypt.compare(apiKey, agent.api_key_hash);
     if (match) {
-      // Backfill prefix for future fast lookups
+      // Backfill prefix for future fast lookups — only if still null to avoid race condition
       await supabase
         .from("agents")
         .update({ api_key_prefix: prefix })
-        .eq("id", agent.id);
+        .eq("id", agent.id)
+        .is("api_key_prefix", null);
       const { api_key_hash, ...safe } = agent;
       return [safe as AuthenticatedAgent, null];
     }

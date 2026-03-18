@@ -13,7 +13,13 @@ export function parseJsonFromClaude(text: string): any {
     .replace(/^```(?:json)?\s*/m, "")
     .replace(/\s*```\s*$/m, "")
     .trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (err: any) {
+    throw new Error(
+      `Failed to parse Claude JSON response: ${err.message}\nInput (first 300 chars): ${text.slice(0, 300)}`
+    );
+  }
 }
 
 export function formatEpisodesForPrompt(episodes: Episode[]): string {

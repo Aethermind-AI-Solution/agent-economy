@@ -199,52 +199,50 @@ export async function POST(
     },
   };
 
-  // 7. Fire-and-forget: audit log + idempotency cache + episode memory (never block response)
-  Promise.all([
-    // Audit log
-    supabase.from("conversation_events").insert({
-      conversation_id: conversationId,
-      from_status: conv.status,
-      to_status: transition.newStatus,
-      actor_id: agent!.id,
-      actor_role: senderRole,
-      message_type,
-      side_effect: transition.sideEffect ?? null,
-    }),
-    // Idempotency cache
-    idempotencyKey
-      ? supabase.from("idempotency_cache").insert({
-          key: `${conversationId}:${message_type}:${idempotencyKey}`,
-          response: responseBody,
-        })
-      : Promise.resolve(),
-    // Episode memory — fires on terminal states only
-    (transition.newStatus === "completed" || transition.newStatus === "disputed")
-      ? recordEpisode(updated)
-      : Promise.resolve(),
-    // Trust recompute — fires on terminal states only
-    (transition.newStatus === "completed" || transition.newStatus === "disputed")
-      ? Promise.all([
-          recomputeTrust(conv.buyer_id).catch(() => {}),
-          recomputeTrust(conv.vendor_id).catch(() => {}),
-        ])
-      : Promise.resolve(),
-    // Touch last_active_at for the sender
-    supabase.rpc("touch_agent_active", { p_agent_id: agent!.id }),
-    // Webhook delivery to buyer + vendor
-    deliverWebhooks(conv.buyer_id, conv.vendor_id, {
-      event: "state_transition",
-      conversation_id: conversationId,
-      from_status: conv.status,
-      to_status: transition.newStatus!,
-      message_type,
-      side_effect: transition.sideEffect ?? null,
-      conversation: updated,
-      timestamp: new Date().toISOString(),
-    }),
-  ]).catch((err) =>
-    console.error(JSON.stringify({ event: "post_transition_error", conversationId, error: err?.message }))
-  );
+  // 7. Fire-and-forget side effects — each isolated so one failure doesn't cancel others
+  const ffLog = (op: string) => (err: any) =>
+    console.error(JSON.stringify({ event: "post_transition_error", op, conversationId, error: err?.message }));
+
+  // Audit log
+  supabase.from("conversation_events").insert({
+    conversation_id: conversationId,
+    from_status: conv.status,
+    to_status: transition.newStatus,
+    actor_id: agent!.id,
+    actor_role: senderRole,
+    message_type,
+    side_effect: transition.sideEffect ?? null,
+  }).then(() => {}, ffLog("audit_log"));
+
+  // Idempotency cache
+  if (idempotencyKey) {
+    supabase.from("idempotency_cache").insert({
+      key: `${conversationId}:${agent!.id}:${message_type}:${idempotencyKey}`,
+      response: responseBody,
+    }).then(() => {}, ffLog("idempotency_cache"));
+  }
+
+  // Touch last_active_at for the sender
+  supabase.rpc("touch_agent_active", { p_agent_id: agent!.id }).then(() => {}, ffLog("touch_active"));
+
+  // Terminal-state side effects
+  if (transition.newStatus === "completed" || transition.newStatus === "disputed") {
+    recordEpisode(updated).catch(ffLog("episode_memory"));
+    recomputeTrust(conv.buyer_id).catch(ffLog("trust_buyer"));
+    recomputeTrust(conv.vendor_id).catch(ffLog("trust_vendor"));
+  }
+
+  // Webhook delivery to buyer + vendor
+  deliverWebhooks(conv.buyer_id, conv.vendor_id, {
+    event: "state_transition",
+    conversation_id: conversationId,
+    from_status: conv.status,
+    to_status: transition.newStatus!,
+    message_type,
+    side_effect: transition.sideEffect ?? null,
+    conversation: updated,
+    timestamp: new Date().toISOString(),
+  }).catch(ffLog("webhooks"));
 
   console.log(JSON.stringify({
     event: "state_transition",
