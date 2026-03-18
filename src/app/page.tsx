@@ -198,22 +198,41 @@ function AnalyticsChart({ revenue }: { revenue: any[] }) {
 export default async function Dashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string; crew_msg?: string }>;
+  searchParams: Promise<{ key?: string; status?: string; sort?: string; dir?: string; page?: string; crew_msg?: string; login_error?: string }>;
 }) {
-  const { key: keyParam, status, sort, dir, page, crew_msg } = await searchParams;
-  // Accept key from query param (direct URL access) or HttpOnly cookie (post-dispute redirect)
+  const { key: keyParam, status, sort, dir, page, crew_msg, login_error } = await searchParams;
+  // Accept key from cookie (set by /api/admin/login) or legacy ?key= query param
   const cookieStore = await cookies();
-  const key = keyParam ?? cookieStore.get("admin_key")?.value;
+  const key = cookieStore.get("admin_key")?.value ?? keyParam;
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (adminPassword && key !== adminPassword) {
     return (
       <html lang="en">
-        <head><title>Agent Economy — Access Denied</title></head>
+        <head><title>Agent Economy — Login</title></head>
         <body style={{ fontFamily: "system-ui", display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", margin: 0, background: "#0f172a", color: "#94a3b8" }}>
-          <div style={{ textAlign: "center" }}>
-            <h1 style={{ fontSize: "1.5rem", color: "#e2e8f0" }}>🔒 Admin Dashboard</h1>
-            <p>Access denied. Append <code>?key=YOUR_PASSWORD</code> to the URL.</p>
+          <div style={{ textAlign: "center", width: 320 }}>
+            <h1 style={{ fontSize: "1.5rem", color: "#e2e8f0", marginBottom: 8 }}>🔒 Admin Dashboard</h1>
+            <p style={{ marginBottom: 24, fontSize: 14 }}>Enter your admin password to continue.</p>
+            {login_error && (
+              <p style={{ color: "#f87171", fontSize: 13, marginBottom: 12 }}>Incorrect password. Try again.</p>
+            )}
+            <form method="POST" action="/api/admin/login" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input
+                type="password"
+                name="key"
+                placeholder="Admin password"
+                autoFocus
+                required
+                style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #2a2a3a", background: "#1e1e2e", color: "#e2e8f0", fontSize: 15, outline: "none" }}
+              />
+              <button
+                type="submit"
+                style={{ padding: "10px 14px", borderRadius: 8, background: "#3b82f6", color: "#fff", fontWeight: 600, fontSize: 15, border: "none", cursor: "pointer" }}
+              >
+                Sign in
+              </button>
+            </form>
           </div>
         </body>
       </html>
