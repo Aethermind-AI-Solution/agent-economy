@@ -14,9 +14,10 @@ export function isSafeWebhookUrl(urlString: string): boolean {
 
   if (!["http:", "https:"].includes(url.protocol)) return false;
 
-  const hostname = url.hostname.toLowerCase();
+  // url.hostname for IPv6 addresses includes brackets: [::1] → strip them
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
 
-  // Localhost variants
+  // Localhost variants (IPv4 + IPv6 loopback)
   if (["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname)) return false;
 
   // Link-local (AWS/GCP/Azure metadata endpoints: 169.254.169.254)
