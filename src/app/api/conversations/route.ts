@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   // Verify vendor exists and is active
   const { data: vendor } = await supabase
     .from("agents")
-    .select("id, status, type, min_buyer_trust")
+    .select("id, status, type, min_buyer_trust, capabilities")
     .eq("id", vendor_id)
     .single();
 
@@ -67,6 +67,16 @@ export async function POST(req: NextRequest) {
   if (vendor.type === "buyer") {
     return NextResponse.json(
       { error: "Target agent is not a vendor" },
+      { status: 400 }
+    );
+  }
+
+  // Validate vendor actually offers the requested service
+  const capabilities = (vendor.capabilities ?? []) as Array<{ service_type: string }>;
+  const offersService = capabilities.some((c) => c.service_type === service_type);
+  if (!offersService) {
+    return NextResponse.json(
+      { error: `Vendor does not offer service: ${service_type}` },
       { status: 400 }
     );
   }

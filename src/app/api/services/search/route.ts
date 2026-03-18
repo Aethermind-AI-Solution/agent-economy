@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
+import type { Capability } from "@/lib/types";
 
 /**
  * GET /api/services/search?type=image_generation
@@ -14,13 +16,20 @@ import { supabase } from "@/lib/supabase";
  * Returns: list of matching agents with their capabilities and reputation.
  */
 export async function GET(req: NextRequest) {
-  // Auth is optional for this endpoint — authenticated agents get the same results.
-  // Public callers (marketplace, developer tooling) can call without a Bearer token.
+  // Auth is optional — authenticated agents and public callers get the same results.
+  // Rate limited per agent ID (if authed) or per IP (if public).
   const hasAuth = req.headers.get("authorization")?.startsWith("Bearer ");
+  let rateLimitKey: string;
   if (hasAuth) {
-    const [, authError] = await authenticate(req);
+    const [agent, authError] = await authenticate(req);
     if (authError) return authError;
+    rateLimitKey = agent!.id;
+  } else {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    rateLimitKey = `search:${ip}`;
   }
+  const rateLimited = await rateLimit(rateLimitKey);
+  if (rateLimited) return rateLimited;
 
   const serviceType = req.nextUrl.searchParams.get("type");
   if (!serviceType) {
@@ -54,8 +63,8 @@ export async function GET(req: NextRequest) {
 
   // Shape response: extract only the matching capability per vendor
   const results = (vendors ?? []).map((v) => {
-    const capability = (v.capabilities as any[]).find(
-      (c: any) => c.service_type === serviceType
+    const capability = (v.capabilities as Capability[]).find(
+      (c) => c.service_type === serviceType
     );
     return {
       agent_id: v.id,

@@ -22,10 +22,11 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(50, Math.max(1, isNaN(rawLimit) ? 20 : rawLimit));
 
   // Mark stale "running" records as failed (process killed, e.g. Vercel 60s limit)
+  // Uses created_at because started_at is never set by createCrewRun()
   db.from("crew_runs")
     .update({ status: "failed", error: "Timed out — process was killed" })
     .eq("status", "running")
-    .lt("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+    .lt("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
     .then(() => {});
 
   const runs = await listCrewRuns(limit);

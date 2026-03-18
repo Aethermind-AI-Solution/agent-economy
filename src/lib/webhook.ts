@@ -53,7 +53,7 @@ export async function deliverWebhooks(
         });
         clearTimeout(timeout);
       } catch {
-        console.log(JSON.stringify({
+        console.error(JSON.stringify({
           event: "webhook_failed",
           agent_id: agent.id,
           url: agent.webhook_url,

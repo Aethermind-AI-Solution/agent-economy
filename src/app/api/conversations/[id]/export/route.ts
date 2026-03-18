@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { csvCell } from "@/lib/csv";
+import { authenticate } from "@/lib/auth";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -10,22 +12,34 @@ const supabase = createClient(
  * GET /api/conversations/:id/export
  *
  * Downloads the delivery artifact as a CSV file.
+ * Requires authentication — caller must be a participant in the conversation.
  * Supports artifact types: scored_leads, outreach_drafts.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const [agent, authError] = await authenticate(req);
+  if (authError) return authError;
+
   const { id } = await params;
 
   const { data: conv, error } = await supabase
     .from("conversations")
-    .select("delivery_payload, service_type")
+    .select("delivery_payload, service_type, buyer_id, vendor_id")
     .eq("id", id)
     .single();
 
   if (error || !conv) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Only participants can export their conversation data
+  if (conv.buyer_id !== agent!.id && conv.vendor_id !== agent!.id) {
+    return NextResponse.json(
+      { error: "You are not a participant in this conversation" },
+      { status: 403 }
+    );
   }
 
   const artifact = conv.delivery_payload?.artifacts?.[0];
@@ -81,7 +95,3 @@ export async function GET(
   });
 }
 
-function csvCell(value: unknown): string {
-  const s = String(value ?? "").replace(/"/g, '""');
-  return `"${s}"`;
-}

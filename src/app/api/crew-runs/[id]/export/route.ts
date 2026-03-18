@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCrewRun } from "@/lib/crew-runs";
-
-function csvCell(value: unknown): string {
-  const s = String(value ?? "").replace(/"/g, '""');
-  return `"${s}"`;
-}
+import { csvCell } from "@/lib/csv";
 
 /**
  * GET /api/crew-runs/[id]/export
@@ -17,11 +13,12 @@ export async function GET(
   const { id } = await params;
 
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (adminPassword) {
-    const key = new URL(req.url).searchParams.get("key");
-    if (key !== adminPassword) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!adminPassword) {
+    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+  }
+  const key = new URL(req.url).searchParams.get("key");
+  if (key !== adminPassword) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const result = await getCrewRun(id);

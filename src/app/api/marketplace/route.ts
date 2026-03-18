@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
+import type { Capability } from "@/lib/types";
 
 /**
  * GET /api/marketplace
@@ -13,6 +15,10 @@ import { supabase } from "@/lib/supabase";
  *   strength — filter by strength tag, e.g. "lead_generation"
  */
 export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimited = await rateLimit(`marketplace:${ip}`);
+  if (rateLimited) return rateLimited;
+
   const serviceType = req.nextUrl.searchParams.get("service");
   const model = req.nextUrl.searchParams.get("model");
   const strength = req.nextUrl.searchParams.get("strength");
@@ -43,7 +49,7 @@ export async function GET(req: NextRequest) {
     type: a.type,
     model_provider: a.model_provider ?? "claude",
     strengths: a.strengths ?? [],
-    capabilities: (a.capabilities as any[]) ?? [],
+    capabilities: (a.capabilities as Capability[]) ?? [],
     reputation_score: Number(a.reputation_score) || 0,
     total_transactions: a.total_transactions ?? 0,
     trust_score: Number(a.trust_score) || 0,

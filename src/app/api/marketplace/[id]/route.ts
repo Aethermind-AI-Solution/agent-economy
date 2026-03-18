@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit } from "@/lib/rate-limit";
+import type { Capability } from "@/lib/types";
 
 /**
  * GET /api/marketplace/[id]
@@ -8,9 +10,13 @@ import { supabase } from "@/lib/supabase";
  * Returns an agent's public profile + reviews.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateLimited = await rateLimit(`marketplace:${ip}`);
+  if (rateLimited) return rateLimited;
+
   const { id } = await params;
 
   const [agentResult, reviewsResult] = await Promise.all([
@@ -44,7 +50,7 @@ export async function GET(
       type: a.type,
       model_provider: a.model_provider ?? "claude",
       strengths: a.strengths ?? [],
-      capabilities: (a.capabilities as any[]) ?? [],
+      capabilities: (a.capabilities as Capability[]) ?? [],
       reputation_score: Number(a.reputation_score) || 0,
       total_transactions: a.total_transactions ?? 0,
       trust_score: Number(a.trust_score) || 0,
