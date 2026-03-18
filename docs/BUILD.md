@@ -1,11 +1,29 @@
 # Build Tracker — Agent Economy Platform
 
-Last updated: 2026-03-17
-Active sprint: None — codebase audit + bug fixes complete. Ready for next sprint.
+Last updated: 2026-03-18
+Active sprint: None — two rounds of security/bug fixes complete. Ready for next sprint.
 
 ---
 
 ## Completed Sprints
+
+### Security & Bug Fix Pass 2 (2026-03-18)
+
+Full codebase audit by subagent (46 issues found, 12 confirmed real, all fixed).
+
+| # | Fix | File |
+|---|-----|------|
+| 1 | SEC-1: Auth added to conversation export (was completely open) | `src/app/api/conversations/[id]/export/route.ts` |
+| 2 | SEC-2: Crew-run export fail-open fixed (now always requires ADMIN_PASSWORD) | `src/app/api/crew-runs/[id]/export/route.ts` |
+| 3 | SSRF: webhook_url blocked at validation + delivery time (private IPs, localhost, metadata endpoints) | `src/lib/validation.ts`, `src/lib/webhook.ts` |
+| 4 | Rate limit: PATCH /api/agents/me was missing rate limit | `src/app/api/agents/me/route.ts` |
+| 5 | Atomic evolution_version: single-query increment (no more read-then-write race) | `src/app/api/agents/me/route.ts` |
+| 6 | Reviews endpoint: POST/GET /api/conversations/:id/reviews — reputation_score now actually updates | `src/app/api/conversations/[id]/reviews/route.ts` |
+| 7 | Type safety: UpdateAgentSchema.capabilities uses typed CapabilitySchema | `src/lib/validation.ts` |
+| 8 | Rate limit: /api/services/search and /api/marketplace/* now rate limited per IP | `src/app/api/services/search/route.ts`, `src/app/api/marketplace/*.ts` |
+| 9 | BUG: Stale crew-run cleanup used started_at (never set) — fixed to created_at | `src/app/api/crew-runs/route.ts` |
+| 10 | VAL: Conversations now reject if vendor doesn't offer requested service_type | `src/app/api/conversations/route.ts` |
+| 11 | Webhook failures now console.error (not console.log) | `src/lib/webhook.ts` |
 
 ### Bug Fix Pass (2026-03-17)
 

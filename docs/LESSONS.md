@@ -1,6 +1,6 @@
 # Lessons Learned — Agent Economy Platform
 
-Last updated: 2026-03-17
+Last updated: 2026-03-18
 
 ---
 
@@ -376,3 +376,100 @@ curl -s "$SUPABASE_URL/rest/v1/agent_rate_limits?key=eq.{id}&order=window_start.
   -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY"
 ```
 Faster than writing a test script and avoids Vercel cold start noise.
+
+---
+
+## Security & Bug Fixes (2026-03-18)
+
+### Lesson 25: Unauthenticated export endpoints are a silent P0
+
+**What happened:** `GET /api/conversations/:id/export` had `_req` (unused request param) and zero auth — any person knowing a conversation UUID could download the full CSV of leads/outreach drafts. This went unnoticed because the endpoint "worked" and returned data.
+
+**Rule:** Export and download endpoints are high-value targets. Every endpoint that returns data must call `authenticate()` first — even read-only ones. Adding `_req` (underscore) to silence a lint warning is a red flag that auth was skipped.
+
+---
+
+### Lesson 26: Fail-open auth is worse than no auth
+
+**What happened:** `GET /api/crew-runs/:id/export` had:
+```typescript
+if (adminPassword) {          // ← if env not set, this block is skipped entirely
+  if (key !== adminPassword) return 401;
+}
+```
+If `ADMIN_PASSWORD` is unset, every request is allowed through silently. The fix: always fail closed.
+```typescript
+if (!adminPassword) return 500;  // misconfiguration
+if (key !== adminPassword) return 401;
+```
+**Rule:** Auth guards must fail closed. `if (secret) { check }` fails open. `if (!secret) { reject }` fails closed. Always use the second pattern.
+
+---
+
+### Lesson 27: SSRF via webhook_url requires two layers of protection
+
+**What happened:** Agents can register a `webhook_url`. The platform fetches that URL on every state transition. Without validation, an attacker sets `webhook_url: "http://169.254.169.254/latest/meta-data/"` and the platform leaks AWS credentials.
+
+**Fix implemented (two layers):**
+1. **Schema validation** (`isSafeWebhookUrl()` in validation.ts) — blocks private IPs at registration and update time
+2. **Delivery-time re-validation** (webhook.ts) — re-checks before every fetch, catches any URLs that bypassed validation
+
+**Rule:** Any user-supplied URL that the server will fetch must be validated for SSRF. Private ranges to block: `localhost`, `127.x`, `169.254.x` (cloud metadata), `10.x`, `172.16-31.x`, `192.168.x`, private IPv6.
+
+---
+
+### Lesson 28: Public endpoints without rate limits are enumeration targets
+
+**What happened:** `/api/services/search`, `/api/marketplace`, and `/api/marketplace/:id` were public and had zero rate limiting. An attacker could enumerate all agents, scrape all capabilities and pricing, or discovery-scan all UUIDs.
+
+**Fix:** Added IP-based rate limiting to all public endpoints:
+```typescript
+const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+const rateLimited = await rateLimit(`marketplace:${ip}`);
+```
+**Rule:** Every endpoint needs rate limiting. Authenticated endpoints limit per agent ID. Public endpoints limit per IP. No exceptions.
+
+---
+
+### Lesson 29: Stale cleanup queries must use columns that are actually written
+
+**What happened:** The crew-run stale cleanup queried `.lt("started_at", ...)` but `createCrewRun()` only inserts `{ query }` — `started_at` is never set, so it's always NULL. `NULL < timestamp` is false in Postgres, so the cleanup never fired and stale "running" records accumulated forever.
+
+**Fix:** Changed to `.lt("created_at", ...)` which is always populated.
+
+**Rule:** Before writing a cleanup/expiry query on a column, verify that column is actually being written at insert time. NULL comparisons in Postgres always return NULL (falsy), not true.
+
+---
+
+### Lesson 30: Validate vendor capabilities before creating a conversation
+
+**What happened:** `POST /api/conversations` accepted any `service_type` string and created the conversation regardless of whether the vendor actually offered that service. A buyer could send an RFQ for `"space_travel"` to an image-generation vendor.
+
+**Fix:** After fetching the vendor, check that `service_type` is in `vendor.capabilities`:
+```typescript
+const offersService = capabilities.some(c => c.service_type === service_type);
+if (!offersService) return 400;
+```
+**Rule:** When creating a relationship between two entities, validate that the relationship is valid (vendor offers the service, user has the role, etc.) before inserting.
+
+---
+
+### Lesson 31: `console.log` vs `console.error` matters for production observability
+
+**What happened:** Webhook delivery failures were logged with `console.log` (INFO level). In production log aggregators (Datadog, CloudWatch, Vercel logs), INFO and ERROR are separate streams. Webhook failures were invisible in error dashboards.
+
+**Rule:** Errors and failures go to `console.error`. Expected/informational events go to `console.log`. This determines which alerts fire and which log queries find problems.
+
+---
+
+### Lesson 32: Non-atomic read-modify-write creates silent data corruption
+
+**What happened:** `evolution_version` increment was done in two queries:
+1. Read: `const current = await supabase.select("evolution_version")`
+2. Write: `await supabase.update({ evolution_version: current + 1 })`
+
+Two concurrent PATCH requests both read version N and both write N+1. One increment is silently lost.
+
+**Fix:** Combine into a single update — read current value and include the incremented result in the same `updates` object sent in one query.
+
+**Rule:** Any counter increment must be atomic. Either: (a) include the increment in the same update query, (b) use a Postgres RPC with `SET col = col + 1`, or (c) use advisory locks. Never read-then-write a counter in two separate queries.
