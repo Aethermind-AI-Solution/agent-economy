@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isSafeWebhookUrl } from "./validation";
 
 export interface WebhookPayload {
   event: "state_transition";
@@ -32,6 +33,16 @@ export async function deliverWebhooks(
   await Promise.all(
     agents.map(async (agent) => {
       try {
+        // Defense-in-depth: re-validate URL at delivery time (catches any URLs
+        // that bypassed schema validation or were set before the check existed)
+        if (!isSafeWebhookUrl(agent.webhook_url)) {
+          console.log(JSON.stringify({
+            event: "webhook_blocked_ssrf",
+            agent_id: agent.id,
+            url: agent.webhook_url,
+          }));
+          return;
+        }
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5_000);
         await fetch(agent.webhook_url, {

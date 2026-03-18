@@ -61,6 +61,9 @@ export async function PATCH(req: NextRequest) {
   const [agent, authError] = await authenticate(req);
   if (authError) return authError;
 
+  const rateLimited = await rateLimit(agent!.id);
+  if (rateLimited) return rateLimited;
+
   let raw: unknown;
   try {
     raw = await req.json();
@@ -91,8 +94,14 @@ export async function PATCH(req: NextRequest) {
   if (meta_strategy !== undefined) {
     updates.meta_strategy = meta_strategy;
     updates.last_evolved_at = new Date().toISOString();
-    updates.evolution_version = supabase.rpc; // placeholder — handled below
-    delete updates.evolution_version;
+    // Read current evolution_version and include atomic increment in the same update
+    // (avoids race condition from doing two separate queries)
+    const { data: current } = await supabase
+      .from("agents")
+      .select("evolution_version")
+      .eq("id", agent!.id)
+      .single();
+    updates.evolution_version = (current?.evolution_version ?? 0) + 1;
   }
 
   const { data: updated, error } = await supabase
@@ -103,14 +112,6 @@ export async function PATCH(req: NextRequest) {
       "id, name, type, balance, capabilities, strengths, reputation_score, total_transactions, status, webhook_url, meta_strategy, evolution_version, last_evolved_at, created_at"
     )
     .single();
-
-  // Increment evolution_version separately when meta_strategy is updated
-  if (meta_strategy !== undefined && updated) {
-    await supabase
-      .from("agents")
-      .update({ evolution_version: (updated.evolution_version ?? 0) + 1 })
-      .eq("id", agent!.id);
-  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
