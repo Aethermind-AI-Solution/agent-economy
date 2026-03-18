@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
-import { UpdateAgentSchema } from "@/lib/validation";
+import { UpdateAgentSchema, isSafeWebhookUrl } from "@/lib/validation";
 
 /**
  * GET /api/agents/me
@@ -83,6 +83,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   const { name, type, capabilities, strengths, webhook_url, meta_strategy } = parsed.data;
+
+  // Re-validate webhook_url at update time (Zod only checks format; SSRF check must also run here)
+  if (webhook_url !== null && webhook_url !== undefined && !isSafeWebhookUrl(webhook_url)) {
+    return NextResponse.json(
+      { error: "webhook_url must be a publicly accessible URL (private/internal IPs are not allowed)" },
+      { status: 400 }
+    );
+  }
 
   // Build update payload — only include fields that were sent
   const updates: Record<string, unknown> = {};

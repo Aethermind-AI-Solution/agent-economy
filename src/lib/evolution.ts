@@ -114,26 +114,31 @@ Only output the JSON object, nothing else.`,
     const cleaned = rawText.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
     const parsed = MetaStrategyResponseSchema.parse(JSON.parse(cleaned));
 
-    const newStrategy: MetaStrategy = {
+    const evolvedAt = new Date().toISOString();
+
+    // Build strategy without version — version comes from the DB after atomic increment
+    const strategyPayload = {
       learned_heuristics: parsed.learned_heuristics,
       avoid_patterns: parsed.avoid_patterns,
       prompt_additions: parsed.prompt_additions,
-      version: currentVersion + 1,
-      evolved_at: new Date().toISOString(),
+      evolved_at: evolvedAt,
     };
 
-    // Write back to platform
-    await supabase.from("agents").update({
-      meta_strategy: newStrategy,
-      evolution_version: currentVersion + 1,
-      last_evolved_at: new Date().toISOString(),
-    }).eq("id", agentId);
+    // Write back to platform — DB increments evolution_version atomically
+    const { data: rpcResult } = await supabase.rpc("increment_evolution_version", {
+      p_agent_id: agentId,
+      p_meta_strategy: strategyPayload,
+      p_evolved_at: evolvedAt,
+    });
+
+    const newVersion: number = rpcResult ?? currentVersion + 1;
+    const newStrategy: MetaStrategy = { ...strategyPayload, version: newVersion };
 
     console.log(JSON.stringify({
       event: "agent_evolved",
       agent_id: agentId,
       agent_name: agent.name,
-      version: newStrategy.version,
+      version: newVersion,
       heuristics_count: newStrategy.learned_heuristics.length,
     }));
 

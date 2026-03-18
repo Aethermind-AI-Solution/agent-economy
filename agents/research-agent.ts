@@ -170,6 +170,7 @@ export async function findCompaniesParallel(
   // Merge + deduplicate by normalised company_name
   const seen = new Set<string>();
   const deduped = results.flat().filter((c) => {
+    if (!c || !c.company_name) return false;
     const key = c.company_name.toLowerCase().replace(/\s+/g, "");
     if (seen.has(key)) return false;
     seen.add(key);
